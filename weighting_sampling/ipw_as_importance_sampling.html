@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Untitled</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="ipw_as_importance_sampling_files/libs/clipboard/clipboard.min.js"></script>
+<script src="ipw_as_importance_sampling_files/libs/quarto-html/quarto.js"></script>
+<script src="ipw_as_importance_sampling_files/libs/quarto-html/popper.min.js"></script>
+<script src="ipw_as_importance_sampling_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="ipw_as_importance_sampling_files/libs/quarto-html/anchor.min.js"></script>
+<link href="ipw_as_importance_sampling_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="ipw_as_importance_sampling_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="ipw_as_importance_sampling_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="ipw_as_importance_sampling_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="ipw_as_importance_sampling_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Untitled</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> scipy <span class="im">as</span> sp</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pygam <span class="im">import</span> GAM, s, te</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> plotnine <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>DATA_PATH <span class="op">=</span> <span class="st">'../../data/causal-inference-in-python-code/causal-inference-in-python/data/'</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co">#print(os.getcwd())</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># command shift i</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>risk_df <span class="op">=</span> pd.read_csv(DATA_PATH <span class="op">+</span> <span class="st">'risk_data.csv'</span>)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(risk_df.shape)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>risk_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>(50000, 8)</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div>
+
+
+<table class="dataframe table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">wage</th>
+<th data-quarto-table-cell-role="th">educ</th>
+<th data-quarto-table-cell-role="th">exper</th>
+<th data-quarto-table-cell-role="th">married</th>
+<th data-quarto-table-cell-role="th">credit_score1</th>
+<th data-quarto-table-cell-role="th">credit_score2</th>
+<th data-quarto-table-cell-role="th">credit_limit</th>
+<th data-quarto-table-cell-role="th">default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>950.0</td>
+<td>11</td>
+<td>16</td>
+<td>1</td>
+<td>500.0</td>
+<td>518.0</td>
+<td>3200.0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>780.0</td>
+<td>11</td>
+<td>7</td>
+<td>1</td>
+<td>414.0</td>
+<td>429.0</td>
+<td>1700.0</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1230.0</td>
+<td>14</td>
+<td>9</td>
+<td>1</td>
+<td>586.0</td>
+<td>571.0</td>
+<td>4200.0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1040.0</td>
+<td>15</td>
+<td>8</td>
+<td>1</td>
+<td>379.0</td>
+<td>411.0</td>
+<td>1500.0</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1000.0</td>
+<td>16</td>
+<td>1</td>
+<td>1</td>
+<td>379.0</td>
+<td>518.0</td>
+<td>1800.0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># [np.quantile(risk_df['credit_limit'], q) for q in np.arange(0, 1.1, .1)]</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [200.0, 1200.0, 1700.0, 2100.0, 2400.0, 2700.0, 3100.0, 3500.0, 3900.0, 4700.0, 8500.0]</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>risk_mid_df <span class="op">=</span> risk_df.query(<span class="st">'credit_limit &gt;= 2400'</span>).copy()</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>risk_mid_df[<span class="st">'high_line'</span>] <span class="op">=</span> risk_mid_df[<span class="st">'credit_limit'</span>] <span class="op">&gt;</span> <span class="dv">3900</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>risk_mid_df[[<span class="st">'wage'</span>, <span class="st">'credit_score1'</span>, <span class="st">'credit_score2'</span>, <span class="st">'high_line'</span>, <span class="st">'default'</span>]].groupby(<span class="st">'high_line'</span>).agg(<span class="st">'mean'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div>
+
+
+<table class="dataframe table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">wage</th>
+<th data-quarto-table-cell-role="th">credit_score1</th>
+<th data-quarto-table-cell-role="th">credit_score2</th>
+<th data-quarto-table-cell-role="th">default</th>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">high_line</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">False</td>
+<td>1052.997436</td>
+<td>473.614161</td>
+<td>487.485089</td>
+<td>0.149302</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">True</td>
+<td>1520.383802</td>
+<td>565.398207</td>
+<td>547.135892</td>
+<td>0.097411</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">## simple model</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>high_line_propensity_model_data <span class="op">=</span> risk_mid_df[[<span class="st">'wage'</span>, <span class="st">'credit_score1'</span>, <span class="st">'credit_score2'</span>]]</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>high_line_propensity_model_dv <span class="op">=</span> risk_mid_df[<span class="st">'high_line'</span>] <span class="op">*</span> <span class="dv">1</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>high_line_propensity_model <span class="op">=</span> GAM(s(<span class="dv">0</span>) <span class="op">+</span> s(<span class="dv">1</span>) <span class="op">+</span> s(<span class="dv">2</span>), distribution <span class="op">=</span> <span class="st">'binomial'</span>, link <span class="op">=</span> <span class="st">'logit'</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>high_line_propensity_model <span class="op">=</span> high_line_propensity_model.fit(high_line_propensity_model_data, high_line_propensity_model_dv)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>risk_mid_df[<span class="st">'phat'</span>] <span class="op">=</span> high_line_propensity_model.predict_mu(high_line_propensity_model_data)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ggplot(risk_mid_df, aes(x = 'phat', fill = 'high_line')) + geom_density(alpha = .4) + xlab('$P(High Line)$') + ggtitle('Propensity Model Predictions by Treatment Group')</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># def gg_bardist(data, x, y, intervals = [0.95, 0.8, 0.5], **kwargs):</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     x_var = x</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     x_ = data[x_var]</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     y_var = y</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     y_ = data[y_var]</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     ys = list(map(lambda i: np.quantile(y_, [(1 - i)/2, 0.5 + i/2]), intervals))</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     plot_ = ggplot(data, aes(x = x_var, y = y_var), **kwargs)</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#     plot_ += geom_linerange(aes(x = x_var, ymin = ys[0][0], ymax = ys[0][1]), size = .5)</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">#     plot_ += geom_linerange(aes(x = x_var, ymin = ys[1][0], ymax = ys[1][1]), size = 2, color = 'grey')</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">#     plot_ += geom_linerange(aes(x = x_var, ymin = ys[2][0], ymax = ys[2][1]), size = 4, color = 'lightblue')</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     return plot_</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> interval_ranges_df(df, y, group, intervals <span class="op">=</span> [<span class="fl">0.95</span>, <span class="fl">0.8</span>, <span class="fl">0.5</span>]):</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    int_list <span class="op">=</span> <span class="bu">list</span>()</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> intervals:</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        i_df <span class="op">=</span> df.groupby(group).<span class="bu">apply</span>(<span class="kw">lambda</span> df: pd.Series(<span class="bu">dict</span>(</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>            ymin <span class="op">=</span> np.quantile(df[y], (<span class="dv">1</span> <span class="op">-</span> i)<span class="op">/</span><span class="dv">2</span>),</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>            ymax <span class="op">=</span> np.quantile(df[y], <span class="fl">0.5</span> <span class="op">+</span> i<span class="op">/</span><span class="dv">2</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>        ))).reset_index()</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>        i_df[<span class="st">'interval'</span>] <span class="op">=</span> <span class="bu">str</span>(i)</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>        int_list.append(i_df)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    int_df <span class="op">=</span> pd.concat(int_list)</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> int_df</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> gg_interval_dist(interval_df, x):</span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>    x_var <span class="op">=</span> x</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>    <span class="kw">del</span> x</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>    plot_ <span class="op">=</span> ggplot(interval_df, aes(x <span class="op">=</span> x_var, ymin <span class="op">=</span> <span class="st">'ymin'</span>, ymax <span class="op">=</span> <span class="st">'ymax'</span>)) </span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>    plot_ <span class="op">+=</span> geom_linerange(interval_df.query(<span class="st">'interval == "0.95"'</span>), size <span class="op">=</span> <span class="fl">0.5</span>)</span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>    plot_ <span class="op">+=</span> geom_linerange(interval_df.query(<span class="st">'interval == "0.8"'</span>), size <span class="op">=</span> <span class="dv">2</span>, color <span class="op">=</span> <span class="st">'grey'</span>)</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>    plot_ <span class="op">+=</span> geom_linerange(interval_df.query(<span class="st">'interval == "0.5"'</span>), size <span class="op">=</span> <span class="dv">4</span>, color <span class="op">=</span> <span class="st">'lightblue'</span>)</span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> plot_</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>phat_dist_df <span class="op">=</span> interval_ranges_df(risk_mid_df, y <span class="op">=</span> <span class="st">'phat'</span>, group <span class="op">=</span> <span class="st">'high_line'</span>)</span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>gg_interval_dist(phat_dist_df, x <span class="op">=</span> <span class="st">'high_line'</span>) <span class="op">+</span> xlab(<span class="st">'High Line Strategy'</span>) <span class="op">+</span> ylab(<span class="st">'P(Treatment)'</span>) <span class="op">+</span> ggtitle(<span class="st">'Propensity Distributions between Credit Limit Groups'</span>) <span class="op">+</span> coord_flip() <span class="op">+</span> theme_bw() <span class="op">+</span> theme(figure_size <span class="op">=</span> (<span class="dv">4</span>, <span class="fl">2.5</span>)) <span class="op">+</span> labs(caption <span class="op">=</span> <span class="st">'Bars show 95-80-50% Data Interval'</span>)</span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a><span class="co"># gg_bardist(risk_mid_df, 'high_line', 'phat') + </span></span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a><span class="co">#     ylab('P(High Line)') +</span></span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a><span class="co">#     xlab('High Line Treatment') +</span></span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a><span class="co">#     ggtitle('Distribution of ')</span></span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a><span class="co"># ggplot(risk_mid_df, aes(x = 'phat', fill = 'high_line')) + geom_histogram(alpha = .4, position = 'dodge') + xlab('$P(High Line)$') + ggtitle('Propensity Model Predictions by Treatment Group')</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="ipw_as_importance_sampling_files/figure-html/cell-6-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>risk_mid_df.groupby(<span class="st">'high_line'</span>).<span class="bu">apply</span>(<span class="kw">lambda</span> df: pd.Series(<span class="bu">dict</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    size <span class="op">=</span> df.shape[<span class="dv">0</span>],</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    weight <span class="op">=</span> np.<span class="bu">sum</span>(df[<span class="st">'phat'</span>]),</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    other_weight <span class="op">=</span> np.<span class="bu">sum</span>(<span class="dv">1</span> <span class="op">-</span> df[<span class="st">'phat'</span>])</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div>
+
+
+<table class="dataframe table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">size</th>
+<th data-quarto-table-cell-role="th">weight</th>
+<th data-quarto-table-cell-role="th">other_weight</th>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">high_line</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">False</td>
+<td>21058.0</td>
+<td>4603.417117</td>
+<td>16454.582883</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">True</td>
+<td>9927.0</td>
+<td>5323.582883</td>
+<td>4603.417117</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>wage_dist_df <span class="op">=</span> interval_ranges_df(risk_mid_df, group <span class="op">=</span> <span class="st">'high_line'</span>, y <span class="op">=</span> <span class="st">'wage'</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>gg_interval_dist(wage_dist_df, x <span class="op">=</span> <span class="st">'high_line'</span>) <span class="op">+</span> xlab(<span class="st">'High Line Strategy'</span>) <span class="op">+</span> ylab(<span class="st">'Wage Distribution)'</span>) <span class="op">+</span> ggtitle(<span class="st">'Wage Distributions between Credit Limit Groups'</span>) <span class="op">+</span> coord_flip() <span class="op">+</span> theme_bw() <span class="op">+</span> theme(figure_size <span class="op">=</span> (<span class="dv">4</span>, <span class="fl">2.5</span>)) <span class="op">+</span> labs(caption <span class="op">=</span> <span class="st">'Bars show 95-80-50% Data Interval'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="ipw_as_importance_sampling_files/figure-html/cell-8-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">## restrict to control obs</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>risk_mid_control <span class="op">=</span> risk_mid_df.query(<span class="st">'high_line == False'</span>).copy()</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">## assign higher weights to those with the highest p(T), which means we divide by the 1 - P(T)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>risk_mid_control[<span class="st">'control_weights'</span>] <span class="op">=</span> <span class="dv">1</span> <span class="op">/</span> (<span class="dv">1</span> <span class="op">-</span> risk_mid_control[<span class="st">'phat'</span>])</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">## normalize to sum to 1</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>risk_mid_control[<span class="st">'control_weights'</span>] <span class="op">=</span> risk_mid_control[<span class="st">'control_weights'</span>] <span class="op">/</span> np.<span class="bu">sum</span>(risk_mid_control[<span class="st">'control_weights'</span>])</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co">## resample a dataframe the same size as the treatment</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>risk_mid_control_weighted <span class="op">=</span> risk_mid_control.sample(n <span class="op">=</span> risk_mid_df.query(<span class="st">'high_line == True'</span>).shape[<span class="dv">0</span>], replace <span class="op">=</span> <span class="va">True</span>, weights <span class="op">=</span> <span class="st">'control_weights'</span>)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(np.mean(risk_mid_control[<span class="st">'phat'</span>]))</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(np.mean(risk_mid_control_weighted[<span class="st">'phat'</span>]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>0.21860656839480097
+0.3193194517225654</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>risk_combined_df <span class="op">=</span> pd.concat([</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    risk_mid_df.assign(high_line <span class="op">=</span> <span class="kw">lambda</span> df: df[<span class="st">'high_line'</span>].astype(<span class="st">'str'</span>)), </span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    risk_mid_control_weighted.assign(high_line <span class="op">=</span> <span class="st">'control_weighted'</span>)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    ])</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>wage_dist_wdf <span class="op">=</span> interval_ranges_df(risk_combined_df, group <span class="op">=</span> <span class="st">'high_line'</span>, y <span class="op">=</span> <span class="st">'wage'</span>)</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>gg_interval_dist(wage_dist_wdf, x <span class="op">=</span> <span class="st">'high_line'</span>) <span class="op">+</span> xlab(<span class="st">'High Line Strategy'</span>) <span class="op">+</span> ylab(<span class="st">'Wage Distribution)'</span>) <span class="op">+</span> ggtitle(<span class="st">'Wage Distributions between Credit Limit Groups'</span>) <span class="op">+</span> coord_flip() <span class="op">+</span> theme_bw() <span class="op">+</span> theme(figure_size <span class="op">=</span> (<span class="dv">4</span>, <span class="fl">2.5</span>)) <span class="op">+</span> labs(caption <span class="op">=</span> <span class="st">'Bars show 95-80-50% Data Interval'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="ipw_as_importance_sampling_files/figure-html/cell-10-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
