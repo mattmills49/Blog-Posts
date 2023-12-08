@@ -51,7 +51,7 @@ def theme_custom(*args, **kwargs):
     custom_theme_args = dict(
         dpi = 150, 
         figure_size = (5, 3), 
-        plot_background=element_rect(fill = 'lightgrey'), panel_background=element_rect(fill = 'lightgrey'))   
+        plot_background=element_rect(fill = '#F5F5F5'), panel_background=element_rect(fill = '#F5F5F5'))   
     
     theme_args = {**custom_theme_args, **kwargs}
     
