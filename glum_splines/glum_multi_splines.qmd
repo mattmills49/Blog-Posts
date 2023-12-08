@@ -1,6 +1,6 @@
 ---
 title: "Fitting Multiple Spline Terms in Python using glum"
-format: html
+format: md
 ---
 
 In my last post I covered how you can fit Penalized Splines using the `glum` library in Python. Notionally `glum` was built to fit Generalized Linear Models. However it was designed to give the user the option to pass in a custom penalty matrix. We took advantage of this capability to penalize a sequence of Basis Splines and also fit Cyclic splines which allow the user to model a symmetric effect. In this post I'd like to cover how we can use this method to fit multiple spline terms. My end goal would be to develop a framework to actually incorporate into the `glum` library, but that will be in a later post. 
@@ -43,6 +43,16 @@ def retro_palette_scaled(n = 1):
         scaled_palette = retro_palette[pos]
     
     return scaled_palette
+
+def theme_custom(*args, **kwargs):
+    custom_theme_args = dict(
+        dpi = 150, 
+        figure_size = (5, 3), 
+        plot_background=element_rect(fill = 'lightgrey'), panel_background=element_rect(fill = 'lightgrey'))   
+    
+    theme_args = {**custom_theme_args, **kwargs}
+    
+    return theme(**theme_args)
     
 ```
 
@@ -143,7 +153,7 @@ model_matrix = np.hstack([
     spline_info['daily']['bsplines']
     ])
 print(model_matrix.shape)
-model_matrix[:3, :10]
+np.round(model_matrix[:3, :10], 2)
 ```
 
 #### Fitting the Model
@@ -162,7 +172,8 @@ solar_df['preds_baseline'] = gam_model.predict(model_matrix)
     geom_point(aes(y = 'power_gw'), alpha = .5) +
     xlab('Hour of the Day') + ylab('Predicted (Blue Line) vs Actual Solar Power') + ggtitle('Model Predictions for Jan 1') +
     scale_y_continuous(limits = (-2, 5)) +
-    theme_bw())
+    theme_bw() + theme_custom()
+)
 ```
 
 ```{python}
@@ -220,7 +231,7 @@ ggplot(plot_cyc_df, aes(x = 'hour', y = 'preds')) + \
     annotate('text', label = 'Baseline', color = retro_palette[0], x = 6, y = -1, size = 12) +\
     guides(color = False) +\
     scale_color_manual(values = retro_palette_scaled(n = 2)) +\
-    theme_bw()
+    theme_bw() + theme_custom()
 ```
 
 As you can see our hourly coefficients are more symmetric, but also much more muted than the baseline model; the baseline `gam_model` predicts a max solar output of ~4.1GW while the cyclic `gam_model_cyc` only predicts a value of ~3.2. The reason for this is that when we multiplied our cyclic penalty matrix (`hourly_penalty_cyc`) by an additional penalty value (`cyclic_penalty`) we increased the weight on the cyclic penalty but also increased the weight on the original difference penalty. This makes it harder for the model to justify consecutive spline coefficients with large differences, which makes the overall curve less, well, curvy. We can fix this by rewriting our `add_cyc_penalty` function to take the additional penalty value as an input and multiplying only the row that corresponds to the cyclic penalty (the last row) by our penalty value. 
@@ -275,13 +286,13 @@ ggplot(plot_cyc_df2, aes(x = 'hour', y = 'preds')) + \
     xlab('Hour of the Day') + ylab('Predicted vs Actual Solar Power') + ggtitle('Model Predictions Comparison for Jan 1') +\
     annotate('text', label = 'Cyclic', color = retro_palette[-1], x = 2, y = 1, size = 12) +\
     annotate('text', label = 'Baseline', color = retro_palette[0], x = 6, y = -1, size = 12) +\
-    annotate('text', label = 'Cyclic Penalty', color = retro_palette[4], x = 20, y = -0.75, size = 12) +\
+    annotate('text', label = 'Cyclic Penalty', color = retro_palette[4], x = 18, y = -0.75, size = 12) +\
     scale_color_manual(values = retro_palette_scaled(n = 3)[[0, 2, 1]]) +\
     guides(color = False) +\
-    theme_bw() + theme(plot_background=element_rect(fill = '#EDE6DA'), panel_background=element_rect(fill = '#EDE6DA'))
+    theme_bw() + theme_custom()
 ```
 
-There is still some discontinuity between 11pm and midnight, but our predictions have maintained their more accurate predictions during the middle of the day while shrinking the gap. 
+There is still some discontinuity between 11pm and midnight, but our predictions have maintained their more accurate predictions during the middle of the day while shrinking the gap. In fact, I can't seem to figure out how to close this gap. If I increase the penalty value in the updated `add_cyclic_penalty` function the coefficients really don't change. If I make it too large then `glum` will throw errors about how the `P2` matrix must be positive semi-definite. I will have to look into this but wanted to wrap this post up regardless since the core idea was just including multiple splines, which we have done. 
 
 From here I would love to actually look at the internals in the `glum` library to see if its feasible to implement this capability directly into the library. For now hopefully this explains a little more about P-splines and fitting models with `glum`. 
 
