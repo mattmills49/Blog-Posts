@@ -1,6 +1,9 @@
 ---
 title: "Fitting Multiple Spline Terms in Python using glum"
-format: md
+format: 
+    gfm: 
+        preview-mode: raw
+keep-ipynb: True
 ---
 
 In my last post I covered how you can fit Penalized Splines using the `glum` library in Python. Notionally `glum` was built to fit Generalized Linear Models. However it was designed to give the user the option to pass in a custom penalty matrix. We took advantage of this capability to penalize a sequence of Basis Splines and also fit Cyclic splines which allow the user to model a symmetric effect. In this post I'd like to cover how we can use this method to fit multiple spline terms. My end goal would be to develop a framework to actually incorporate into the `glum` library, but that will be in a later post. 

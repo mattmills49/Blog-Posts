@@ -27,13 +27,13 @@ as a function of the hour of the day and the day of the year. I will
 also include a linear term for the total amount of solar installed that
 is available to help the model pick up an increase in installed solar
 throughout the year.
-*p**o**w**e**r* ∼ *B**S*(*H**o**u**r**O**f**D**a**y*) + *B**S*(*D**a**y**O**f**Y**e**a**r*) + *T**o**t**a**l**S**o**l**a**r*
-This is probably a really bad model of how solar power actually works :)
-but my only goal here is to build a framework for fitting multiple
-spline terms using `glum`, not solve the world’s energy crisis. Our
-column of interest is the `ERCOT.PVGR.GEN` which shows the total MWs of
-solar generated in that hour but I’m going to make a more convenient
-`power_gw` field for use in this script.
+$power \sim BS(HourOfDay) + BS(DayOfYear) + TotalSolar$ This is probably
+a really bad model of how solar power actually works :) but my only goal
+here is to build a framework for fitting multiple spline terms using
+`glum`, not solve the world’s energy crisis. Our column of interest is
+the `ERCOT.PVGR.GEN` which shows the total MWs of solar generated in
+that hour but I’m going to make a more convenient `power_gw` field for
+use in this script.
 
 ``` python
 import numpy as np
@@ -57,142 +57,21 @@ solar_df.head()
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
     }
-
-    .dataframe tbody tr th {
+&#10;    .dataframe tbody tr th {
         vertical-align: top;
     }
-
-    .dataframe thead th {
+&#10;    .dataframe thead th {
         text-align: right;
     }
 </style>
 
-<table class="dataframe" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header" style="text-align: right;">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">Time (Hour-Ending)</th>
-<th data-quarto-table-cell-role="th">Date</th>
-<th data-quarto-table-cell-role="th">ERCOT.LOAD</th>
-<th data-quarto-table-cell-role="th">ERCOT.PVGR.GEN</th>
-<th data-quarto-table-cell-role="th">Total Solar Installed, MW</th>
-<th data-quarto-table-cell-role="th">Solar Output, % of Load</th>
-<th data-quarto-table-cell-role="th">Solar Output, % of Installed</th>
-<th data-quarto-table-cell-role="th">Solar 1-hr MW change</th>
-<th data-quarto-table-cell-role="th">Solar 1-hr % change</th>
-<th data-quarto-table-cell-role="th">Daytime Hour</th>
-<th data-quarto-table-cell-role="th">Ramping Daytime Hour</th>
-<th data-quarto-table-cell-role="th">time</th>
-<th data-quarto-table-cell-role="th">hour</th>
-<th data-quarto-table-cell-role="th">day</th>
-<th data-quarto-table-cell-role="th">week</th>
-<th data-quarto-table-cell-role="th">day_of_week</th>
-<th data-quarto-table-cell-role="th">power_gw</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">0</td>
-<td>01/01/2022 01:00:00</td>
-<td>Jan-01</td>
-<td>38124</td>
-<td>0</td>
-<td>9323</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>NaN</td>
-<td>NaN</td>
-<td>False</td>
-<td>False</td>
-<td>2022-01-01 01:00:00</td>
-<td>1</td>
-<td>1</td>
-<td>52</td>
-<td>5</td>
-<td>0.0</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">1</td>
-<td>01/01/2022 02:00:00</td>
-<td>Jan-01</td>
-<td>37123</td>
-<td>0</td>
-<td>9323</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>False</td>
-<td>False</td>
-<td>2022-01-01 02:00:00</td>
-<td>2</td>
-<td>1</td>
-<td>52</td>
-<td>5</td>
-<td>0.0</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">2</td>
-<td>01/01/2022 03:00:00</td>
-<td>Jan-01</td>
-<td>35937</td>
-<td>0</td>
-<td>9323</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>False</td>
-<td>False</td>
-<td>2022-01-01 03:00:00</td>
-<td>3</td>
-<td>1</td>
-<td>52</td>
-<td>5</td>
-<td>0.0</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">3</td>
-<td>01/01/2022 04:00:00</td>
-<td>Jan-01</td>
-<td>35133</td>
-<td>0</td>
-<td>9323</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>False</td>
-<td>False</td>
-<td>2022-01-01 04:00:00</td>
-<td>4</td>
-<td>1</td>
-<td>52</td>
-<td>5</td>
-<td>0.0</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">4</td>
-<td>01/01/2022 05:00:00</td>
-<td>Jan-01</td>
-<td>34603</td>
-<td>0</td>
-<td>9323</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>0.0</td>
-<td>False</td>
-<td>False</td>
-<td>2022-01-01 05:00:00</td>
-<td>5</td>
-<td>1</td>
-<td>52</td>
-<td>5</td>
-<td>0.0</td>
-</tr>
-</tbody>
-</table>
+|     | Time (Hour-Ending)  | Date   | ERCOT.LOAD | ERCOT.PVGR.GEN | Total Solar Installed, MW | Solar Output, % of Load | Solar Output, % of Installed | Solar 1-hr MW change | Solar 1-hr % change | Daytime Hour | Ramping Daytime Hour | time                | hour | day | week | day_of_week | power_gw |
+|-----|---------------------|--------|------------|----------------|---------------------------|-------------------------|------------------------------|----------------------|---------------------|--------------|----------------------|---------------------|------|-----|------|-------------|----------|
+| 0   | 01/01/2022 01:00:00 | Jan-01 | 38124      | 0              | 9323                      | 0.0                     | 0.0                          | NaN                  | NaN                 | False        | False                | 2022-01-01 01:00:00 | 1    | 1   | 52   | 5           | 0.0      |
+| 1   | 01/01/2022 02:00:00 | Jan-01 | 37123      | 0              | 9323                      | 0.0                     | 0.0                          | 0.0                  | 0.0                 | False        | False                | 2022-01-01 02:00:00 | 2    | 1   | 52   | 5           | 0.0      |
+| 2   | 01/01/2022 03:00:00 | Jan-01 | 35937      | 0              | 9323                      | 0.0                     | 0.0                          | 0.0                  | 0.0                 | False        | False                | 2022-01-01 03:00:00 | 3    | 1   | 52   | 5           | 0.0      |
+| 3   | 01/01/2022 04:00:00 | Jan-01 | 35133      | 0              | 9323                      | 0.0                     | 0.0                          | 0.0                  | 0.0                 | False        | False                | 2022-01-01 04:00:00 | 4    | 1   | 52   | 5           | 0.0      |
+| 4   | 01/01/2022 05:00:00 | Jan-01 | 34603      | 0              | 9323                      | 0.0                     | 0.0                          | 0.0                  | 0.0                 | False        | False                | 2022-01-01 05:00:00 | 5    | 1   | 52   | 5           | 0.0      |
 
 </div>
 
@@ -225,16 +104,16 @@ for k, v in spline_info.items():
 
 Next is our combined penalty matrix. When we had one spline term we
 could just pass in the inner transpose product of the difference matrix
-(I’m not sure if that’s the correct term, but the *D*<sup>*T*</sup>*D*
-matrix is what I’m referring to). Now we have two spline terms and a
-simple linear term. Since each spline term has its own penalty we can
-structure the full penalty matrix as a “sequence” of individual penalty
-matrices. So the difference matrices will be on the (large) diagonal and
-the outer triangles are filled with zeros. This way each penalty only
-interacts with its own corresponding spline coefficients and no other
-term’s coefficients.
+(I’m not sure if that’s the correct term, but the $D^TD$ matrix is what
+I’m referring to). Now we have two spline terms and a simple linear
+term. Since each spline term has its own penalty we can structure the
+full penalty matrix as a “sequence” of individual penalty matrices. So
+the difference matrices will be on the (large) diagonal and the outer
+triangles are filled with zeros. This way each penalty only interacts
+with its own corresponding spline coefficients and no other term’s
+coefficients.
 
-$$ $$
+\$\$ \$\$
 
 This allows us to combine any number of individual terms. More terms
 will obviously increase the time it takes to fit each model. I would
@@ -336,11 +215,11 @@ gam_model = GeneralizedLinearRegressor(P2 = gam_penalty, alpha = 1, fit_intercep
 solar_df['preds_baseline'] = gam_model.predict(model_matrix)
 ```
 
-    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=1.50368e-18): result may not be accurate.
+    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=1.09793e-18): result may not be accurate.
 
     /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/plotnine/layer.py:401: PlotnineWarning: geom_point : Removed 1 rows containing missing values.
 
-![](glum_multi_splines_files/figure-markdown_strict/cell-11-output-2.png)
+![](glum_multi_splines_files/figure-commonmark/cell-11-output-2.png)
 
 The model certainly picks up on the general trend of solar power
 generation rising during the day before falling in the evening. There
@@ -389,11 +268,11 @@ gam_model_cyc = GeneralizedLinearRegressor(P2 = gam_penalty_cyc, alpha = 1, fit_
 solar_df['preds_cyc'] = gam_model_cyc.predict(model_matrix)
 ```
 
-    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=2.26555e-18): result may not be accurate.
+    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=1.58589e-18): result may not be accurate.
 
     /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/plotnine/layer.py:401: PlotnineWarning: geom_point : Removed 1 rows containing missing values.
 
-![](glum_multi_splines_files/figure-markdown_strict/cell-14-output-2.png)
+![](glum_multi_splines_files/figure-commonmark/cell-14-output-2.png)
 
 As you can see our hourly coefficients are more symmetric, but also much
 more muted than the baseline model; the baseline `gam_model` predicts a
@@ -427,11 +306,11 @@ cyclic_penalty = np.sqrt(10)
 hourly_penalty_cyc = add_cyc_penalty(spline_info['hourly']['diff_matr'], cyclic_penalty)
 ```
 
-    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=1.58188e-19): result may not be accurate.
+    /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/glum/_solvers.py:52: LinAlgWarning: Ill-conditioned matrix (rcond=3.25164e-19): result may not be accurate.
 
     /Users/mm/Documents/Data Science/Blog Posts/lib/python3.7/site-packages/plotnine/layer.py:401: PlotnineWarning: geom_point : Removed 1 rows containing missing values.
 
-![](glum_multi_splines_files/figure-markdown_strict/cell-17-output-2.png)
+![](glum_multi_splines_files/figure-commonmark/cell-17-output-2.png)
 
 There is still some discontinuity between 11pm and midnight, but our
 predictions have maintained their more accurate predictions during the
