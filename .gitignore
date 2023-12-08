@@ -163,3 +163,7 @@ bin/*
 lib/*
 weighting_sampling/bin/*
 weighting_sampling/lib/*
+glum_splines/*.html
+glum_splines/*.md
+glum_splines/glum_multi_splines_files/*
+glum_splines/*.png
