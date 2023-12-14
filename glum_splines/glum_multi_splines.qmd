@@ -4,6 +4,7 @@ format:
     gfm: 
         preview-mode: raw
 keep-ipynb: True
+
 ---
 
 In my last post I covered how you can fit Penalized Splines using the `glum` library in Python. Notionally `glum` was built to fit Generalized Linear Models. However it was designed to give the user the option to pass in a custom penalty matrix. We took advantage of this capability to penalize a sequence of Basis Splines and also fit Cyclic splines which allow the user to model a symmetric effect. In this post I'd like to cover how we can use this method to fit multiple spline terms. My end goal would be to develop a framework to actually incorporate into the `glum` library, but that will be in a later post. 
@@ -50,9 +51,9 @@ def retro_palette_scaled(n = 1):
 def theme_custom(*args, **kwargs):
     custom_theme_args = dict(
         dpi = 150, 
-        figure_size = (5, 3), 
+        figure_size = (7, 4), 
         plot_background=element_rect(fill = '#F5F5F5'), panel_background=element_rect(fill = '#F5F5F5'))   
-    
+    ## use custom theme args first so the given options will override them
     theme_args = {**custom_theme_args, **kwargs}
     
     return theme(**theme_args)
@@ -76,8 +77,9 @@ solar_df['day_of_week'] = solar_df['time'].dt.day_of_week
 ```
 
 ```{python}
+#| output: asis
 solar_df['power_gw'] = solar_df['ERCOT.PVGR.GEN'] / 1000
-solar_df.head()
+solar_df.head().to_markdown()
 ```
 
 #### Building a spline 
@@ -99,17 +101,14 @@ for k, v in spline_info.items():
     spline_info[k]['diff_matr'] = np.diff(np.eye(v['num_splines']), n = 2, axis = 0)
 ```
 
-Next is our combined penalty matrix. When we had one spline term we could just pass in the inner transpose product of the difference matrix (I'm not sure if that's the correct term, but the $D^TD$ matrix is what I'm referring to). Now we have two spline terms and a simple linear term. Since each spline term has its own penalty we can structure the full penalty matrix as a "sequence" of individual penalty matrices. So the difference matrices will be on the (large) diagonal and the outer triangles are filled with zeros. This way each penalty only interacts with its own corresponding spline coefficients and no other term's coefficients. 
+Next is our combined penalty matrix. When we had one spline term we could just pass in the inner transpose product of the difference matrix (I'm not sure if that's the correct term, but the $D^TD$ matrix is what I'm referring to). Now we have two spline terms and a simple linear term. Since each spline term has its own penalty we can structure the full penalty matrix as a "sequence" of individual penalty matrices. So the difference matrices will be on the (large) diagonal and the outer triangles are filled with zeros. This way each penalty only interacts with its own corresponding spline coefficients and no other term's coefficients. If $mathbf{D_hourly}$ is the penalty matrix for the hours of the day coefficients, and $mathbf{D_daily}$ is the penalty matrix for the day of the year coefficient then our combined penalty matrix is just:
 
-$$\displaylines{ \mathbf{D_{hourly}} = \text{Hourly Penalty Matrix}\\
-\mathbf{D_{daily}} = \text{Daily Penalty Matrix} \\
-\mathbf{D_{model}} = 
+$$
 \begin{bmatrix}
 \mathbf{D_hourly} & \mathbf{0} \\
 \mathbf{0} & \mathbf{D_{daily}}
 
 \end{bmatrix}
-}
 $$
 
 This allows us to combine any number of individual terms. More terms will obviously increase the time it takes to fit each model. I would love to test this further but my hunch is that it actually won't slow down a model fit too much. The reason is that both the model matrix containing the spline values and the penalty matrix will be "mostly sparse". What I mean by that is that they aren't completely diagonal matrices, but most sections of the matrix are only non-zero near the diagonal. The `glum` library was designed to handle sparse and nearly-sparse matrices more efficiently than other libraries. I'm hoping that these improvements will flow through to fitting GAMs, but we will have to test that on a later date. 
@@ -173,8 +172,9 @@ solar_df['preds_baseline'] = gam_model.predict(model_matrix)
 (ggplot(solar_df.query('day <= 1'), aes(x = 'hour')) + 
     geom_line(aes(y = 'preds_baseline'), color = 'blue', size = 1.5) +
     geom_point(aes(y = 'power_gw'), alpha = .5) +
-    xlab('Hour of the Day') + ylab('Predicted (Blue Line) vs Actual Solar Power') + ggtitle('Model Predictions for Jan 1') +
+    xlab('Hour of the Day') + ylab('Predicted vs Actual Solar Power') + ggtitle('Model Predictions for Jan 1') +
     scale_y_continuous(limits = (-2, 5)) +
+    scale_x_continuous(breaks = (0, 6, 12, 18)) +
     theme_bw() + theme_custom()
 )
 ```
