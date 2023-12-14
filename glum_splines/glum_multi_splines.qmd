@@ -77,9 +77,8 @@ solar_df['day_of_week'] = solar_df['time'].dt.day_of_week
 ```
 
 ```{python}
-#| output: asis
 solar_df['power_gw'] = solar_df['ERCOT.PVGR.GEN'] / 1000
-solar_df.head().to_markdown()
+solar_df.head(3).to_markdown()
 ```
 
 #### Building a spline 
@@ -101,7 +100,7 @@ for k, v in spline_info.items():
     spline_info[k]['diff_matr'] = np.diff(np.eye(v['num_splines']), n = 2, axis = 0)
 ```
 
-Next is our combined penalty matrix. When we had one spline term we could just pass in the inner transpose product of the difference matrix (I'm not sure if that's the correct term, but the $D^TD$ matrix is what I'm referring to). Now we have two spline terms and a simple linear term. Since each spline term has its own penalty we can structure the full penalty matrix as a "sequence" of individual penalty matrices. So the difference matrices will be on the (large) diagonal and the outer triangles are filled with zeros. This way each penalty only interacts with its own corresponding spline coefficients and no other term's coefficients. If $mathbf{D_hourly}$ is the penalty matrix for the hours of the day coefficients, and $mathbf{D_daily}$ is the penalty matrix for the day of the year coefficient then our combined penalty matrix is just:
+Next is our combined penalty matrix. When we had one spline term we could just pass in the inner transpose product of the difference matrix (I'm not sure if that's the correct term, but the $D^TD$ matrix is what I'm referring to). Now we have two spline terms and a simple linear term. Since each spline term has its own penalty we can structure the full penalty matrix as a "sequence" of individual penalty matrices. So the difference matrices will be on the (large) diagonal and the outer triangles are filled with zeros. This way each penalty only interacts with its own corresponding spline coefficients and no other term's coefficients. If $\mathbf{D_hourly}$ is the penalty matrix for the hours of the day coefficients, and $\mathbf{D_daily}$ is the penalty matrix for the day of the year coefficient then our combined penalty matrix is just:
 
 $$
 \begin{bmatrix}
