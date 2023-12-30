@@ -166,3 +166,5 @@ weighting_sampling/lib/*
 glum_splines/*.html
 glum_splines/glum_multi_splines_files/*
 glum_splines/*.png
+
+*.css
