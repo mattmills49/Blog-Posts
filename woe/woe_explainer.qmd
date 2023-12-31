@@ -1,0 +1,39 @@
+---
+title: "Calculating Weight of Evidence of Information Value in Python"
+format:
+	gfm:
+		preview-mode: raw
+keep-ipynb: True
+
+---
+
+Sometimes in my Data Science projects I need a quick and easy way to measure and visualize a predictive trend for several independent variables. My go to way to do this is to use Weight of Evidence and Information Value. Recently I put together some code in python to calculate these values and wanted to show how you can leverage these concepts to learn more about the relationship between your independent and dependent variables. 
+
+### What is Weight of Evidence?
+
+Weight of Evidence (WOE) is a way to measure the predictive value of a variable. I can't find any information online about the history if it's development but I first encountered this concept working at Equifax and have mostly seen resources online from banking and risk modeling. The intuition behind WOE is simple; a feature that seperates the distribution of the dependent variable (DV) is a predictive feature that, all else being equal, you should prefer over a feature that doesn't seperate the distribution. This is typically discussed with a binary DV where we use the distribution of the different labels of the DV, typically referred to as goods vs bads. We can see this visually if we look at two hypothetical features and the distribution of the DVs within each feature. 
+
+
+Although interestingly you will commonly read descriptions of Weight of Evidence referring to "the distribution of goods and bads" in your DV. But really we are measuring the *distribution of the feature* for each seperate population of the DV labels. To do this we group our feature into bins and then calculate the percentage of goods and bads in each bin; again essentially creating a histogram of the feature for the good and bad population using consistent bin edges. Once we have our two distributions we can actually get to calculating the WOE. The formula for WOE is always shown as follows:
+
+$$\displaylines{
+    WOE_i = \ln(\frac{good_i}{bad_i}) \\
+    IV = \sum_{i=1}^N WOE_i * (good_i - bad_i)
+}
+$$
+
+where $good_i$ and $bad_i$ is the percentage of the goods and bads in each feature bin. So if a feature bin has the same percentage of overall goods and bads (e.g. the lowest bin contains 25% of the overall goods and 25% of the overall bads) then that bin will have a WOE of 0 ($ln(1) = 0$). If a feature has no seperation of goods and bads in any bin then the overall Information Value is also 0; the feature has no predictive power using this measure. 
+
+### Connection to Information Theory
+
+A good question to ask is where did this formula come from? Why do you take the natural log of the ratio of goods and bads, but not the difference? What if you put the bads in the numerator and subtract the goods away? Luckily [people smarter than me](https://stats.stackexchange.com/a/462445) have shown that the Information Value is an equivalent expression of the symmetric KL-Divergence measure of two distributions:
+
+
+The KL-Divergence is grounded in information theory and is a common measure of how dissimilar two distributions $p$ and $q$ are. 
+
+### Extension to Continuous DVs
+
+Most explanations online only go over the use case where you are trying to predict a binary DV. 
+
+### Calculations in Python
+
