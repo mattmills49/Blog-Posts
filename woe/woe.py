@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 
-## from plotnine.data import mpg
-## mpg['fuel_effecient'] = 1.0 * (mpg['cty'] > 25)
+from plotnine.data import mpg
+mpg['fuel_effecient'] = 1.0 * (mpg['cty'] > 25)
 
 def bin_data(col, bins = 8, **kwargs):
     ''' 
@@ -48,7 +48,7 @@ def trim_categories(col, bins = 8):
     return default_cats
 
 
-def calc_woe(df, feature_col, dv_col, min_obs = 1, **bin_args):
+def calc_woe(df, feature_col, dv_col, constant = 1e-3, **bin_args):
     '''
     Calculate the WOE and IVs for the categories of the feature
     
@@ -84,15 +84,15 @@ def calc_woe(df, feature_col, dv_col, min_obs = 1, **bin_args):
         reset_index()
     )
     
-    df_counts['pct_goods'] = (df_counts['num_goods'] + min_obs) / (num_goods + min_obs)
-    df_counts['pct_bads'] = (df_counts['num_bads'] + min_obs) / (num_bads + min_obs)
-    df_counts['woe'] = np.log(df_counts['pct_goods'] / df_counts['pct_bads'])
+    df_counts['pct_goods'] = df_counts['num_goods'] / num_goods
+    df_counts['pct_bads'] = df_counts['num_bads'] / num_bads
+    df_counts['woe'] = np.log((df_counts['pct_goods'] + constant) / (df_counts['pct_bads'] + constant))
     df_counts['iv'] = df_counts['woe'] * (df_counts['pct_goods'] - df_counts['pct_bads'])
     
     return df_counts
 
 
-def calc_woe_cont(df, feature_col, dv_col, min_obs = 1, **bin_args):
+def calc_woe_cont(df, feature_col, dv_col, constant = 1e-3, **bin_args):
     '''
     Calculate the WOE and IVs for the categories of the feature for numeric
     dependent values
@@ -131,15 +131,15 @@ def calc_woe_cont(df, feature_col, dv_col, min_obs = 1, **bin_args):
         reset_index()
     )
     
-    df_counts['pct_dv'] = (df_counts['num_dv'] + min_obs) / (num_dv + min_obs)
-    df_counts['pct_baseline'] = (df_counts['num_obs'] + min_obs) / (num_obs + min_obs)
-    df_counts['woe'] = np.log(df_counts['pct_dv'] / df_counts['pct_baseline'])
+    df_counts['pct_dv'] = df_counts['num_dv'] / num_dv
+    df_counts['pct_baseline'] = df_counts['num_obs'] / num_obs
+    df_counts['woe'] = np.log((df_counts['pct_dv'] + constant) / (df_counts['pct_baseline'] + constant))
     df_counts['iv'] = df_counts['woe'] * (df_counts['pct_dv'] - df_counts['pct_baseline'])
     
     return df_counts
 
 
-def calc_iv(df, feature_col, dv_col, binary = True, min_obs = 1, **bin_args):
+def calc_iv(df, feature_col, dv_col, binary = True, constant = 1e-3, **bin_args):
     '''
     Calculate Information Value for the feature
     
@@ -148,9 +148,9 @@ def calc_iv(df, feature_col, dv_col, binary = True, min_obs = 1, **bin_args):
     :param dv_col: The name of the column that contains the dependent variable
     '''
     if binary:
-        woe_df = calc_woe(df, feature_col, dv_col, min_obs, **bin_args)
+        woe_df = calc_woe(df, feature_col, dv_col, constant, **bin_args)
     else:
-        woe_df = calc_woe_cont(df, feature_col, dv_col, min_obs, **bin_args)
+        woe_df = calc_woe_cont(df, feature_col, dv_col, constant, **bin_args)
         
     return np.sum(woe_df['iv'])
 
