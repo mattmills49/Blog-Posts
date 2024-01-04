@@ -1,8 +1,5 @@
 # Calculating Weight of Evidence and Information Value in Python
 
-Rules: 1. feature instead of independent variable 2. bin to name the
-grouping
-
 Sometimes in my Data Science projects I need a quick and easy way to
 measure and visualize a predictive trend for several independent
 variables. My go to way to do this is to use Weight of Evidence and
@@ -83,25 +80,31 @@ formula for Information Value we can essentially treat the term for the
 difference in the percentage of goods and bads in a group as a “weight”
 on the WOE. If we rewrite our formula from before that used
 *g**o**o**d*<sub>*i*</sub> and *b**a**d*<sub>*i*</sub> as the overall
-percentage of each label in the bin to now use
-*b**a**d**r**a**t**e*<sub>*i*</sub> as the ratio and
-*o**b**s**p**c**t*<sub>*i*</sub> we can see this weighting:
-
-num bad / overall bad = (num obs / overall obs) \* (num bad / overall
-bad) / (num obs / overall obs)
+percentage of each label in the bin to now use the number of
+observations in each bin, *n*<sub>*i*</sub>, and the bin specific
+*p*(*b**a**d*)<sub>*i*</sub> as the percentage of observations in each
+bin that are bad we can see this weighting directly.
 
 $$\displaylines{
-bad_i = obspct_i \* badrate_i \\
-good_i = obspct_i \* (1 - badrate_i) \\
-IV = \sum\_{i=1}^N \ln(\frac{obspct_i \* (1 -badrate_i)}{obspct_i \* badrate_i}) \* (obspct_i \* (1 - badrate_i) - obspct_i \* badrate_i) \\
-IV = \sum\_{i=1}^N \ln(\frac{1 - badrate_i}{badrate_i}) \* (obspct_i \* (1 - 2 \* badrate_i))
+bad_i = \frac{n_i \* p(bad)\_i}{n\_{bads}} \\
+good_i = \frac{n_i \* (1 - p(bad)\_i)}{n\_{goods}} \\
+IV = \sum\_{i=1}^N WOE_i \* (\frac{n_i \* (1 - p(bad)\_i)}{n\_{goods}} - \frac{n_i \* p(bad)\_i}{n\_{bads}}) \\
+IV = \sum\_{i=1}^N WOE_i \* \frac{n_i}{n\_{goods} \* n\_{bads}} \* (n\_{bads} - p(bad)\_i \* (n\_{bads} + n\_{goods})) 
 }
 $$
 
-We can calculate an example directly to see the different contributions
-of four hypothetical categories; 2 rare categories and 2 more common
-categories with each size having one informative feature and and one
-with less seperation of the DV.
+Honestly this last term is quite ugly but it does tell us a few
+things: 1. As the size of the bucket, *n*<sub>*i*</sub>, decreases the
+information value contribution for this bin also decreases 2. The
+information value for a feature is influenced by how balanced the
+overall labels are but an individual bin’s IV only changes with the
+number of obs in the bin and how large or small the
+*p*(*b**a**d*)<sub>*i*</sub> term is
+
+We can also calculate an example directly to see the different
+contributions of four hypothetical categories; 2 rare categories and 2
+more common categories with each size having one informative feature and
+and one with less seperation of the DV.
 
 <table style="width:100%;">
 <colgroup>
@@ -181,7 +184,7 @@ and could impact the value and relative rank of Information Value for
 different features. You could run some bootstrap simulations to quantify
 how big of an effect this might cause in your specific datasets. 3. If
 either distribution of goods or bads in a bin is exactly 0 then you will
-receive divide by 0 errors. To correct this I had a small bit of noise
+receive divide-by-0 errors. To correct this I add a small bit of noise
 to each bin’s distribution but this may result in strange results if
 your bins are too small or the outcomes are too rare. 4. This measure
 does not tell you anything else about your feature such as its
@@ -217,9 +220,9 @@ we did with goods vs bads. The parallels between Information Value and
 the KL-Divergence gives a direction to focus on; we want a distance
 between a predictive and non-predictive distribution. One idea is that
 we can compare the distribution of our continuous DV across our feature
-to a baseline value if the DV was evenly spread across the feature
-distribution. If a feature is predictive then the DV will be more
-concentrated in certain areas of the feature (e.g. linear feature =
+to a baseline distribution as if the DV was evenly spread across the
+feature distribution. If a feature is predictive then the DV will be
+more concentrated in certain areas of the feature (e.g. linear feature =
 higher DV share at top end, quadratic = higher DV share at tails, etc…)
 compared to a uniform concentration for a non-predictive feature. We do
 have to make an adjustment to the calculations to ensure that every
@@ -232,10 +235,7 @@ I have put together a python file that can perform the full gamut of
 actions needed to find WOE and IV for both numeric and categorical
 features on my personal github. Here I will just show the code to
 calculate the individual WOE and IV statistics since that was the focus
-of the blog and to keep it short. You can view the full code here. The
-only caveat I haven’t mentioned yet is the need to pad the individual
-bin values with one observation in case the bin is 100% good or bad;
-this way we don’t try to take the natural log of 0 or divide by 0.
+of the blog and to keep it short. You can view the full code here.
 
 ``` python
 def calc_woe(df, feature_col, dv_col, min_obs = 1, **bin_args):
@@ -290,16 +290,27 @@ mpg['fuel_effecient'] = 1.0 * (mpg['hwy'] > 30)
 calc_woe(mpg, 'manufacturer', 'fuel_effecient', bins = 10)
 ```
 
-   | manufacturer_bins | num_obs | num_bads | num_goods | pct_goods |
+| manufacturer_bins | num_obs | num_bads | num_goods | pct_goods |
 pct_bads | woe | iv
-||—:|:——————–|———-:|———–:|————:|————:|———–:|———-:|———–:|| 0 | audi | 18
-| 17 | 1 | 0.0454545 | 0.0801887 | -0.558302 | 0.0193921 || 1 |
-chevrolet | 19 | 19 | 0 | 0 | 0.0896226 | -4.5067 | 0.403903 || 2 |
-dodge | 37 | 37 | 0 | 0 | 0.174528 | -5.1678 | 0.901927 || 3 | ford | 25
-| 25 | 0 | 0 | 0.117925 | -4.77849 | 0.563501 || 4 | *other* | 33 | 26 |
-7 | 0.318182 | 0.122642 | 0.948375 | 0.185445 || 5 | hyundai | 14 | 13 |
-1 | 0.0454545 | 0.0613208 | -0.29382 | 0.00466181 || 6 | nissan | 13 |
-11 | 2 | 0.0909091 | 0.0518868 | 0.552646 | 0.0215655 || 7 | subaru | 14
-| 14 | 0 | 0 | 0.0660377 | -4.20526 | 0.277706 || 8 | toyota | 34 | 26 |
-8 | 0.363636 | 0.122642 | 1.08151 | 0.260639 || 9 | volkswagen | 27 | 24
-| 3 | 0.136364 | 0.113208 | 0.184614 | 0.00427495 |
+||—:|:——————–|———-:|———–:|————:|————:|———–:|———-:|———–:|  
+ 0 | audi | 18 | 17 | 1 | 0.0454545 | 0.0801887 | -0.558302 | 0.0193921
+|  
+ 1 | chevrolet | 19 | 19 | 0 | 0 | 0.0896226 | -4.5067 | 0.403903 |  
+ 2 | dodge | 37 | 37 | 0 | 0 | 0.174528 | -5.1678 | 0.901927 |  
+ 3 | ford | 25 | 25 | 0 | 0 | 0.117925 | -4.77849 | 0.563501 |  
+ 4 | *other* | 33 | 26 | 7 | 0.318182 | 0.122642 | 0.948375 | 0.185445
+|  
+ 5 | hyundai | 14 | 13 | 1 | 0.0454545 | 0.0613208 | -0.29382 |
+0.00466181 |  
+ 6 | nissan | 13 | 11 | 2 | 0.0909091 | 0.0518868 | 0.552646 | 0.0215655
+|  
+ 7 | subaru | 14 | 14 | 0 | 0 | 0.0660377 | -4.20526 | 0.277706 |  
+ 8 | toyota | 34 | 26 | 8 | 0.363636 | 0.122642 | 1.08151 | 0.260639 |  
+ 9 | volkswagen | 27 | 24 | 3 | 0.136364 | 0.113208 | 0.184614 |
+0.00427495 |
+
+To get the full information value for this feature we just sum the
+individual category’s IVs.
+
+I hope this helps some people adapt this technique in their work and
+analysis.
