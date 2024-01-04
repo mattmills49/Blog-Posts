@@ -290,24 +290,132 @@ mpg['fuel_effecient'] = 1.0 * (mpg['hwy'] > 30)
 calc_woe(mpg, 'manufacturer', 'fuel_effecient', bins = 10)
 ```
 
-| manufacturer_bins | num_obs | num_bads | num_goods | pct_goods |
-pct_bads | woe | iv
-||—:|:——————–|———-:|———–:|————:|————:|———–:|———-:|———–:|  
- 0 | audi | 18 | 17 | 1 | 0.0454545 | 0.0801887 | -0.558302 | 0.0193921
-|  
- 1 | chevrolet | 19 | 19 | 0 | 0 | 0.0896226 | -4.5067 | 0.403903 |  
- 2 | dodge | 37 | 37 | 0 | 0 | 0.174528 | -5.1678 | 0.901927 |  
- 3 | ford | 25 | 25 | 0 | 0 | 0.117925 | -4.77849 | 0.563501 |  
- 4 | *other* | 33 | 26 | 7 | 0.318182 | 0.122642 | 0.948375 | 0.185445
-|  
- 5 | hyundai | 14 | 13 | 1 | 0.0454545 | 0.0613208 | -0.29382 |
-0.00466181 |  
- 6 | nissan | 13 | 11 | 2 | 0.0909091 | 0.0518868 | 0.552646 | 0.0215655
-|  
- 7 | subaru | 14 | 14 | 0 | 0 | 0.0660377 | -4.20526 | 0.277706 |  
- 8 | toyota | 34 | 26 | 8 | 0.363636 | 0.122642 | 1.08151 | 0.260639 |  
- 9 | volkswagen | 27 | 24 | 3 | 0.136364 | 0.113208 | 0.184614 |
-0.00427495 |
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 10%" />
+<col style="width: 11%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 11%" />
+<col style="width: 10%" />
+<col style="width: 11%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">manufacturer_bins</th>
+<th style="text-align: right;">num_obs</th>
+<th style="text-align: right;">num_bads</th>
+<th style="text-align: right;">num_goods</th>
+<th style="text-align: right;">pct_goods</th>
+<th style="text-align: right;">pct_bads</th>
+<th style="text-align: right;">woe</th>
+<th style="text-align: right;">iv</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">audi</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">17</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">0.0454545</td>
+<td style="text-align: right;">0.0801887</td>
+<td style="text-align: right;">-0.558302</td>
+<td style="text-align: right;">0.0193921</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">chevrolet</td>
+<td style="text-align: right;">19</td>
+<td style="text-align: right;">19</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0896226</td>
+<td style="text-align: right;">-4.5067</td>
+<td style="text-align: right;">0.403903</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">dodge</td>
+<td style="text-align: right;">37</td>
+<td style="text-align: right;">37</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.174528</td>
+<td style="text-align: right;">-5.1678</td>
+<td style="text-align: right;">0.901927</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">ford</td>
+<td style="text-align: right;">25</td>
+<td style="text-align: right;">25</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.117925</td>
+<td style="text-align: right;">-4.77849</td>
+<td style="text-align: right;">0.563501</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><em>other</em></td>
+<td style="text-align: right;">33</td>
+<td style="text-align: right;">26</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">0.318182</td>
+<td style="text-align: right;">0.122642</td>
+<td style="text-align: right;">0.948375</td>
+<td style="text-align: right;">0.185445</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">hyundai</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">0.0454545</td>
+<td style="text-align: right;">0.0613208</td>
+<td style="text-align: right;">-0.29382</td>
+<td style="text-align: right;">0.00466181</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">nissan</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">0.0909091</td>
+<td style="text-align: right;">0.0518868</td>
+<td style="text-align: right;">0.552646</td>
+<td style="text-align: right;">0.0215655</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">subaru</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0660377</td>
+<td style="text-align: right;">-4.20526</td>
+<td style="text-align: right;">0.277706</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">toyota</td>
+<td style="text-align: right;">34</td>
+<td style="text-align: right;">26</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">0.363636</td>
+<td style="text-align: right;">0.122642</td>
+<td style="text-align: right;">1.08151</td>
+<td style="text-align: right;">0.260639</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">volkswagen</td>
+<td style="text-align: right;">27</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">0.136364</td>
+<td style="text-align: right;">0.113208</td>
+<td style="text-align: right;">0.184614</td>
+<td style="text-align: right;">0.00427495</td>
+</tr>
+</tbody>
+</table>
 
 To get the full information value for this feature we just sum the
 individual category’s IVs.

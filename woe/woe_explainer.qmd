@@ -33,9 +33,9 @@ If a feature bin has the same percentage of overall goods and bads (e.g. the low
 ### Pros and Cons of using Information Value
 
 There are three main reasons that I prefer to use Information Value as a measure of predictiveness to compare different features over other methods:
-1. You can calculate IV for both numeric and categorical features and compare them across feature types. With a numeric feature we first bin the data into groups and after that we can use the exact same code as if we were calculating WOE for categorical bins. 
-2. Missing values are handled automatically and can be treated as if they were a seperate category. In Python we just need to ensure that none of the steps are dropping them silently (e.g. `groupby(..., dropna = False)`). This also has the added benefit of giving you information about potentially imputing missing values.
-3. Low frequency categories have low impact on the variable's Information Value. If you look at the formula for Information Value we can essentially treat the term for the difference in the percentage of goods and bads in a group as a "weight" on the WOE. If we rewrite our formula from before that used $good_i$ and $bad_i$ as the overall percentage of each label in the bin to now use the number of observations in each bin, $n_i$, and the bin specific $p(bad)_i$ as the percentage of observations in each bin that are bad we can see this weighting directly.
+  1. You can calculate IV for both numeric and categorical features and compare them across feature types. With a numeric feature we first bin the data into groups and after that we can use the exact same code as if we were calculating WOE for categorical bins. 
+  2. Missing values are handled automatically and can be treated as if they were a seperate category. In Python we just need to ensure that none of the steps are dropping them silently (e.g. `groupby(..., dropna = False)`). This also has the added benefit of giving you information about potentially imputing missing values.
+  3. Low frequency categories have low impact on the variable's Information Value. If you look at the formula for Information Value we can essentially treat the term for the difference in the percentage of goods and bads in a group as a "weight" on the WOE. If we rewrite our formula from before that used $good_i$ and $bad_i$ as the overall percentage of each label in the bin to now use the number of observations in each bin, $n_i$, and the bin specific $p(bad)_i$ as the percentage of observations in each bin that are bad we can see this weighting directly.
 
 $$\displaylines{
 bad_i = \frac{n_i * p(bad)_i}{n_{bads}} \\
@@ -46,8 +46,8 @@ IV = \sum_{i=1}^N WOE_i * \frac{n_i}{n_{goods} * n_{bads}} * (n_{bads} - p(bad)_
 $$
 
 Honestly this last term is quite ugly but it does tell us a few things:
-1. As the size of the bucket, $n_i$, decreases the information value contribution for this bin also decreases
-2. The information value for a feature is influenced by how balanced the overall labels are but an individual bin's IV only changes with the number of obs in the bin and how large or small the $p(bad)_i$ term is
+  1. As the size of the bucket, $n_i$, decreases the information value contribution for this bin also decreases
+  2. The information value for a feature is influenced by how balanced the overall labels are but an individual bin's IV only changes with the number of obs in the bin and how large or small the $p(bad)_i$ term is
 
 We can also calculate an example directly to see the different contributions of four hypothetical categories; 2 rare categories and 2 more common categories with each size having one informative feature and and one with less seperation of the DV. 
 
@@ -61,10 +61,10 @@ We can also calculate an example directly to see the different contributions of 
 **Cat 2** has the same good to bad ratio as **Cat 4** but 1/10th the contribution to the feature's Information Value statistic because it only has 1/10th of the observations. 
 
 Of course no method is perfect and without it's tradeoffs. Here are some of the main drawbacks to using WOE and IV as measures of feature predictiveness:
-1. Binning your numeric values can cause you to lose some predictive power in your feature. There are many sources that have written on this but I would recommend starting with Frank Harrell's [data method notes](https://discourse.datamethods.org/t/categorizing-continuous-variables/3402)
-2. The number of bins to group your numeric features into or the max number of categories to consider is a parameter that you need to pick and could impact the value and relative rank of Information Value for different features. You could run some bootstrap simulations to quantify how big of an effect this might cause in your specific datasets. 
-3. If either distribution of goods or bads in a bin is exactly 0 then you will receive divide-by-0 errors. To correct this I add a small bit of noise to each bin's distribution but this may result in strange results if your bins are too small or the outcomes are too rare. 
-4. This measure does not tell you anything else about your feature such as its correlation with other variables and whether it is fit to be included in your model.
+  1. Binning your numeric values can cause you to lose some predictive power in your feature. There are many sources that have written on this but I would recommend starting with Frank Harrell's [data method notes](https://discourse.datamethods.org/t/categorizing-continuous-variables/3402)
+  2. The number of bins to group your numeric features into or the max number of categories to consider is a parameter that you need to pick and could impact the value and relative rank of Information Value for different features. You could run some bootstrap simulations to quantify how big of an effect this might cause in your specific datasets. 
+  3. If either distribution of goods or bads in a bin is exactly 0 then you will receive divide-by-0 errors. To correct this I add a small bit of noise to each bin's distribution but this may result in strange results if your bins are too small or the outcomes are too rare. 
+  4. This measure does not tell you anything else about your feature such as its correlation with other variables and whether it is fit to be included in your model.
 
 As an exploratory measure I think that Information Value is still worth using even with these faults but one could easily argue differently.
 
@@ -140,17 +140,18 @@ mpg['fuel_effecient'] = 1.0 * (mpg['hwy'] > 30)
 calc_woe(mpg, 'manufacturer', 'fuel_effecient', bins = 10)
 ```
 
-| | manufacturer_bins   |   num_obs |   num_bads |   num_goods |   pct_goods |   pct_bads |       woe |         iv |\n|---:|:--------------------|----------:|-----------:|------------:|------------:|-----------:|----------:|-----------:|
-|  0 | audi                |        18 |         17 |           1 |   0.0454545 |  0.0801887 | -0.558302 | 0.0193921  |
-|  1 | chevrolet           |        19 |         19 |           0 |   0         |  0.0896226 | -4.5067   | 0.403903   |
-|  2 | dodge               |        37 |         37 |           0 |   0         |  0.174528  | -5.1678   | 0.901927   |
-|  3 | ford                |        25 |         25 |           0 |   0         |  0.117925  | -4.77849  | 0.563501   |
-|  4 | _other_             |        33 |         26 |           7 |   0.318182  |  0.122642  |  0.948375 | 0.185445   |
-|  5 | hyundai             |        14 |         13 |           1 |   0.0454545 |  0.0613208 | -0.29382  | 0.00466181 |
-|  6 | nissan              |        13 |         11 |           2 |   0.0909091 |  0.0518868 |  0.552646 | 0.0215655  |
-|  7 | subaru              |        14 |         14 |           0 |   0         |  0.0660377 | -4.20526  | 0.277706   |
-|  8 | toyota              |        34 |         26 |           8 |   0.363636  |  0.122642  |  1.08151  | 0.260639   |
-|  9 | volkswagen          |        27 |         24 |           3 |   0.136364  |  0.113208  |  0.184614 | 0.00427495 |
+| manufacturer_bins   |   num_obs |   num_bads |   num_goods |   pct_goods |   pct_bads |       woe |         iv |
+|:--------------------|----------:|-----------:|------------:|------------:|-----------:|----------:|-----------:|
+| audi                |        18 |         17 |           1 |   0.0454545 |  0.0801887 | -0.558302 | 0.0193921  |
+| chevrolet           |        19 |         19 |           0 |   0         |  0.0896226 | -4.5067   | 0.403903   |
+| dodge               |        37 |         37 |           0 |   0         |  0.174528  | -5.1678   | 0.901927   |
+| ford                |        25 |         25 |           0 |   0         |  0.117925  | -4.77849  | 0.563501   |
+| _other_             |        33 |         26 |           7 |   0.318182  |  0.122642  |  0.948375 | 0.185445   |
+| hyundai             |        14 |         13 |           1 |   0.0454545 |  0.0613208 | -0.29382  | 0.00466181 |
+| nissan              |        13 |         11 |           2 |   0.0909091 |  0.0518868 |  0.552646 | 0.0215655  |
+| subaru              |        14 |         14 |           0 |   0         |  0.0660377 | -4.20526  | 0.277706   |
+| toyota              |        34 |         26 |           8 |   0.363636  |  0.122642  |  1.08151  | 0.260639   |
+| volkswagen          |        27 |         24 |           3 |   0.136364  |  0.113208  |  0.184614 | 0.00427495 |
 
 To get the full information value for this feature we just sum the individual category's IVs. 
 
