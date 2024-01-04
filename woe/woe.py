@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 
-from plotnine.data import mpg
-mpg['fuel_effecient'] = 1.0 * (mpg['cty'] > 25)
+# from plotnine.data import mpg
+# mpg['fuel_effecient'] = 1.0 * (mpg['cty'] > 25)
 
 def bin_data(col, bins = 8, **kwargs):
     ''' 
@@ -55,7 +55,7 @@ def calc_woe(df, feature_col, dv_col, constant = 1e-3, **bin_args):
     :param df: The dataframe containing the columns to use
     :param feature_col: The name of the column that contains the feature values
     :param dv_col: The name of the column that contains the dependent variable
-    :param min_obs: The amount to add to each numerator and denominator when
+    :param constant: The amount to add to each numerator and denominator when
                     calculating the percent of overall goods and bads to avoid
                     taking logs of 0
     '''
@@ -100,7 +100,7 @@ def calc_woe_cont(df, feature_col, dv_col, constant = 1e-3, **bin_args):
     :param df: The dataframe containing the columns to use
     :param feature_col: The name of the column that contains the feature values
     :param dv_col: The name of the column that contains the dependent variable
-    :param min_obs: The amount to add to each numerator and denominator when
+    :param constant: The amount to add to each numerator and denominator when
                     calculating the percent of overall goods and bads to avoid
                     taking logs of 0
     '''
