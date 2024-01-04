@@ -26,7 +26,8 @@ referred to as goods vs bads. We can see this visually if we look at two
 hypothetical features and the distribution of the DVs within each
 feature.
 
-![](iv_intro.png)
+![A strong relationship (left) and a weak relationship (right) between a
+feature and a DV](iv_intro.png)
 
 Although interestingly you will commonly read descriptions of Weight of
 Evidence referring to “the distribution of goods and bads” in your DV.
@@ -49,7 +50,8 @@ percentage of the overall goods and bads in each feature bin. We can see
 this visually from our previous example with another poorly drawn
 picture:
 
-![](iv_calc.png)
+![Transforming our continuous DV density plot into bins and calculating
+IV for the first bin](iv_calc.png)
 
 Our previous continuous distributions have been binned, and then for
 each bin we take the product of the ratio of the WOE and the difference
@@ -66,24 +68,28 @@ this measure.
 
 There are three main reasons that I prefer to use Information Value as a
 measure of predictiveness to compare different features over other
-methods: 1. You can calculate IV for both numeric and categorical
-features and compare them across feature types. With a numeric feature
-we first bin the data into groups and after that we can use the exact
-same code as if we were calculating WOE for categorical bins. 2. Missing
-values are handled automatically and can be treated as if they were a
-seperate category. In Python we just need to ensure that none of the
-steps are dropping them silently (e.g. `groupby(..., dropna = False)`).
-This also has the added benefit of giving you information about
-potentially imputing missing values. 3. Low frequency categories have
-low impact on the variable’s Information Value. If you look at the
-formula for Information Value we can essentially treat the term for the
-difference in the percentage of goods and bads in a group as a “weight”
-on the WOE. If we rewrite our formula from before that used
-*g**o**o**d*<sub>*i*</sub> and *b**a**d*<sub>*i*</sub> as the overall
-percentage of each label in the bin to now use the number of
-observations in each bin, *n*<sub>*i*</sub>, and the bin specific
-*p*(*b**a**d*)<sub>*i*</sub> as the percentage of observations in each
-bin that are bad we can see this weighting directly.
+methods:
+
+1.  You can calculate IV for both numeric and categorical features and
+    compare them across feature types. With a numeric feature we first
+    bin the data into groups and after that we can use the exact same
+    code as if we were calculating WOE for categorical bins.
+2.  Missing values are handled automatically and can be treated as if
+    they were a seperate category. In Python we just need to ensure that
+    none of the steps are dropping them silently
+    (e.g. `groupby(..., dropna = False)`). This also has the added
+    benefit of giving you information about potentially imputing missing
+    values.
+3.  Low frequency categories have low impact on the variable’s
+    Information Value. If you look at the formula for Information Value
+    we can essentially treat the term for the difference in the
+    percentage of goods and bads in a group as a “weight” on the WOE. If
+    we rewrite our formula from before that used
+    *g**o**o**d*<sub>*i*</sub> and *b**a**d*<sub>*i*</sub> as the
+    overall percentage of each label in the bin to now use the number of
+    observations in each bin, *n*<sub>*i*</sub>, and the bin specific
+    *p*(*b**a**d*)<sub>*i*</sub> as the percentage of observations in
+    each bin that are bad we can see this weighting directly.
 
 $$\displaylines{
 bad_i = \frac{n_i \* p(bad)\_i}{n\_{bads}} \\
@@ -93,13 +99,14 @@ IV = \sum\_{i=1}^N WOE_i \* \frac{n_i}{n\_{goods} \* n\_{bads}} \* (n\_{bads} - 
 }
 $$
 
-Honestly this last term is quite ugly but it does tell us a few
-things: 1. As the size of the bucket, *n*<sub>*i*</sub>, decreases the
-information value contribution for this bin also decreases 2. The
-information value for a feature is influenced by how balanced the
-overall labels are but an individual bin’s IV only changes with the
-number of obs in the bin and how large or small the
-*p*(*b**a**d*)<sub>*i*</sub> term is
+Honestly this last term is quite ugly but it does tell us a few things:
+
+1.  As the size of the bucket, *n*<sub>*i*</sub>, decreases the
+    information value contribution for this bin also decreases
+2.  The information value for a feature is influenced by how balanced
+    the overall labels are but an individual bin’s IV only changes with
+    the number of obs in the bin and how large or small the
+    *p*(*b**a**d*)<sub>*i*</sub> term is
 
 We can also calculate an example directly to see the different
 contributions of four hypothetical categories; 2 rare categories and 2
@@ -173,23 +180,27 @@ only has 1/10th of the observations.
 
 Of course no method is perfect and without it’s tradeoffs. Here are some
 of the main drawbacks to using WOE and IV as measures of feature
-predictiveness: 1. Binning your numeric values can cause you to lose
-some predictive power in your feature. There are many sources that have
-written on this but I would recommend starting with Frank Harrell’s
-[data method
-notes](https://discourse.datamethods.org/t/categorizing-continuous-variables/3402)
-2. The number of bins to group your numeric features into or the max
-number of categories to consider is a parameter that you need to pick
-and could impact the value and relative rank of Information Value for
-different features. You could run some bootstrap simulations to quantify
-how big of an effect this might cause in your specific datasets. 3. If
-either distribution of goods or bads in a bin is exactly 0 then you will
-receive divide-by-0 errors. To correct this I add a small bit of noise
-to each bin’s distribution but this may result in strange results if
-your bins are too small or the outcomes are too rare. 4. This measure
-does not tell you anything else about your feature such as its
-correlation with other variables and whether it is fit to be included in
-your model.
+predictiveness:
+
+1.  Binning your numeric values can cause you to lose some predictive
+    power in your feature. There are many sources that have written on
+    this but I would recommend starting with Frank Harrell’s [data
+    method
+    notes](https://discourse.datamethods.org/t/categorizing-continuous-variables/3402)
+2.  The number of bins to group your numeric features into or the max
+    number of categories to consider is a parameter that you need to
+    pick and could impact the value and relative rank of Information
+    Value for different features. You could run some bootstrap
+    simulations to quantify how big of an effect this might cause in
+    your specific datasets.
+3.  If either distribution of goods or bads in a bin is exactly 0 then
+    you will receive divide-by-0 errors. To correct this I add a small
+    bit of noise to each bin’s distribution but this may result in
+    strange results if your bins are too small or the outcomes are too
+    rare.
+4.  This measure does not tell you anything else about your feature such
+    as its correlation with other variables and whether it is fit to be
+    included in your model.
 
 As an exploratory measure I think that Information Value is still worth
 using even with these faults but one could easily argue differently.
@@ -204,7 +215,7 @@ me](https://stats.stackexchange.com/a/462445) have shown that the
 Information Value is an equivalent expression of the symmetric
 KL-Divergence measure of two distributions:
 
-![](kl_formula.png)
+![Credit: kjetil b halvorsen on stack exchange](kl_formula.png)
 
 The KL-Divergence is grounded in information theory and is a common
 measure of how dissimilar two distributions *p* and *q* are. This way it
