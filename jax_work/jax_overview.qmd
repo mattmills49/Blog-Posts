@@ -1,0 +1,162 @@
+---
+title: "Jax, Flax, and Optax; What the hax are you talking about?"
+format:
+	gfm:
+		preview-mode: raw
+keep-ipynb: False
+---
+
+As part of my intro to Jax post I wanted to create a better guide and walkthrough for the actual code. This post serves more as a resource for me to reference later rather than an interesting blog post but I'm publishing it just in case it helps others. 
+
+### Jax Overview
+
+There are many other resources that give better introductions to Jax than I could. For this post all you need to know is that Jax is basically numpy that can automatically compute gradients on the operations you do with the code you write. `flax` is a deep learning specific library written in Jax that helps manage some of the model fitting and parameter management issues common in deep learning. My whole point in writing these articles is that you don't need to do "deep learning" to still take advantage of Jax to enhance your own statistical tool box. 
+
+### Code Outline
+
+When building up our Jax code to build our models there is a basic outline of steps that we will need to do:
+
+  1. Load and prep the data for modeling
+  2. Define our model as a series of data transformations
+  3. Define your loss function to work on batched data (i.e. multiple observations at once)
+  4. Register your loss function with `optax` 
+  5. Optimize your model parameters with optax
+
+I think for this guide it will be easiest to start with defining our model using `flax`
+
+### Define a model
+
+flax has a library called `linen` that we use to define our model. Models in flax store a series of steps to apply to the input data to get a prediction. If we are building a regression model the flax model would apply coefficient vector to our input matrix and return a vector of predicted values. Here is where the deviation from a traditional regression model through `glm` in `R` or `statsmodels` begins. The flax model doesn't even store the parameters. It accepts a dictionary of parameters and an inpute matrix and applies the transformations defined in the model. 
+
+```{python}
+#| eval: False
+## params: A pytree (from jax) dictionary of parameter values
+## x: the input matrix of Independent Variables
+preds = model.apply(params, x)
+```
+
+With a different set of `params` the same model object will return different predictions.
+
+To define a model we need to define at least these two functions:
+
+  * `setup`: defines any variables or initial parameters needed for your model
+  * `__call__`: The code that gets executed when you `apply` your model, either a series of deep learning layers or matrix multiplications/additions. 
+
+Since my whole premise is that you can use Jax to supercharge your regression models we will build our models manually as a series of matrix multiplications. Here is our `simpleMLP` class defined in the post:
+
+```{python}
+#| eval: False
+class simpleMLP(nn.Module):
+    num_feats: int
+    num_output: int
+    batch_size: int
+    
+    def setup(self):
+        ## self.param: Declares and returns a parameter in this Module.
+        ## nn.init..: Builds an initializer that returns real normally-distributed random arrays.
+        self.W1 = self.param('W1', nn.initializers.normal(.1), (self.num_feats, self.num_feats))
+        self.b1 = self.param('b1', nn.initializers.uniform(.1), (self.batch_size, self.num_feats))
+        
+        self.W2 = self.param('W2', nn.initializers.normal(.1), (self.num_feats, self.num_output))
+        self.b2 = self.param('b2', nn.initializers.uniform(.1), (self.batch_size, self.num_output))
+    
+    def __call__(self, inputs):
+        x = inputs
+        ## first layer
+        x = jnp.matmul(x, self.W1) + self.b1
+        ## second layer
+        x = jnp.matmul(x, self.W2) + self.b2
+        return x
+
+model = simpleMLP(
+    num_feats = x.shape[1], 
+    num_output = y.shape[1], 
+    batch_size = 20
+)
+```
+
+Lets walk through this section by section
+
+  1. an `nn.Module` is a `dataclass` so we can define our initial arguments like `num_feats` (the number of features in our initial data), `num_output` (the dimension of our predicted values), `batch_size` (how many observations we use in each run of our model optimization). 
+  2. `setup` uses the `self.param` function to declare a variable for the model to track and for use to use later on. The `param` method takes in the name of the parameter we are defining, and initilization function, and the arguments for the initializer. I'll go over what the `nn.initializer` objects do later. So in this step we are definition our coefficients and intercepts to use later on. 
+  3. `__call__` basically does the math of our model. So our "first layer" takes the input data, multiplies it by our first coefficient matrix `W1` and adds in a bias term `b1`. If we wanted to customize the steps in our model or change how the model maps the input features to the output predictions we would do it here. Traditionally this is just a series of predefined deep learning layers. But it doesn't have to be! It just has to be code you write using jax. 
+
+The initializers are a little mysterious to me still. As far as I understand it is a helper classes that simplifies initializing a matrix using the jax random number system. 
+
+Ok so we have a series of matrix transformations that maps our input data to our desired output dimensions, how do we actually "fit" our model?
+
+### Using Jax to Write Your Loss Function
+
+Its a good time to remember that Jax = numpy + autograd. So we can simply write our loss function for a single observation using numpy code, but with the jax version, and then use `vmap` to vectorize that code to more dimensions. Here is our squared error loss that takes in a vector `x` and a vector `y` and uses a predefined model and set of parameters to get the squared error for the predictions. 
+
+```{python}
+#| eval: False
+
+def squared_error(x, y):
+        preds = model.apply(params, x)[0, :]
+        ## I don't know why Jax returns more rows than the x matrix passed
+        ## to the model but restricting the output to what we want works
+        ## I'll have to keep researching
+        results = jnp.inner(y - preds, y - preds) / 2.0
+        return results
+```
+
+Again this only works on a single observation and dependent vector. To vectorize this to multiple observations at once we use `jax.vmap` which takes in a function and returns a new function that works on multiple observations. Then we can take the mean across all the observations in our batch. 
+
+```{python}
+#| eval: False
+
+def squared_loss(params, x, y, model):
+    '''Calculate the squared error loss for a matrix of snow predictions
+    
+    :param params: The model parameters
+    :param x: the input matrix
+    :param y: the dependent matrix
+    :param model: the model to use to get predictions
+    '''
+    def squared_error(x, y):
+        ...
+
+    ## vectorize the previous to compute the average of the loss on all samples
+    return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
+```
+
+Our data transformations basically go as this:
+
+  * `squared_error`: ($[1, m]$, $[1, d]$) => $[1, 1]$
+    * `jax.vmap(squared_error)`: ($[n, m]$, $[n, d]$) => $[n, 1]$
+      * `jnp.mean(...)` : $[n, 1]$ => $[1, 1]$
+
+This allows us to get a single loss function value to pass to our optimizer to know how accurate our predictions are, and jax will calculate all the gradients for this loss function along the transformations defined in our model object. This is the whole reason for using jax; if you can write your data transformations and loss function in python code, jax can optimize the model for you. Isn't that awesome?!
+
+### Fit the Model
+
+Since we are dealing with stochastic gradient descent there isn't going to be a `.fit` method that returns a completed model. Instead we will define a gradient descent step and then call that over and over again until we decide to end the optimization process. This is accomplished in the jax ecosystem using `optax`. optax contains a series of optimizers and ways to update a `flax` model's parameters by minimizing a loss function. Lets again show the `run_sgd` function I wrote and go through it step by step:
+
+
+```{python}
+#| eval: False
+
+def run_sgd(model, params, x, y, loss_fn):
+    model_loss = ft.partial(loss_fn, model = model)
+    
+    tx = optax.adam(learning_rate = 0.05)
+    opt_state = tx.init(params)
+    loss_grad_fn = jax.value_and_grad(model_loss)
+
+    for i in range(101):
+        x_batch, y_batch = get_batch(x = x, y = y)
+        loss_val, grads = loss_grad_fn(params, x_batch, y_batch)
+        updates, opt_state = tx.update(grads, opt_state)
+        params = optax.apply_updates(params, updates)
+        if i % 10 == 0:
+            print(f'Loss step {i}: {loss_val}')
+    
+    return params, loss_val
+```
+
+  1. We use the `adam` optimizer from optax for our model. We can pass the parameters when we initialize our optimizer and get an optimization state with our initial set of parameters defined when we created out model. We use `jax.value_and_grad` to convert our loss function into another function that will return the loss value and the gradients from a given call to the function. Now we can start optimizing
+  2. We run our SGD for a set number of iterations, 101. We pass in that run's data to `loss_grad_fn` to get the current loss value and gradients for that run's input data. We then pass those gradients and the previous state to the `optax` optimizer with `tx.update(grad, opt_state)`. 
+  3. We update our parameters by essentially adding the updates to the prior iteration's parameters to get our current state of parameters. 
+  4. We repeat this until we run through each iteration. 
+
