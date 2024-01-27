@@ -168,3 +168,6 @@ glum_splines/glum_multi_splines_files/*
 glum_splines/*.png
 
 *.css
+
+jax_work/*.pkl
+jax_work/*.parquet
