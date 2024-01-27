@@ -48,10 +48,20 @@ class simpleMLP(nn.Module):
 def squared_loss(params, x, y, model):
     '''Calculate the squared error loss for a matrix of snow predictions
     
-    :param params: The model parameters
-    :param x: the input matrix
-    :param y: the dependent matrix
-    :param model: the model to use to get predictions
+    Parameters
+    ----------
+    params : dict
+        The model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    model : flax model
+        the model to use to get predictions
+        
+    Returns
+    -------
+    The mean squared error across the observations
     '''
     ## Define the squared loss for a single pair
     def squared_error(x, y):
@@ -61,23 +71,120 @@ def squared_loss(params, x, y, model):
     ## vectorize the previous to compute the average of the loss on all samples
     return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
 
+
 def smooth_squared_loss(params, x, y, model, lam = 0.05):
-    '''Calculate the squared error loss for a matrix of snow predictions
+    '''Calculate the squared error loss plus a smoothness penalty for a matrix of snow predictions
     
-    :param params: The model parameters
-    :param x: the input matrix
-    :param y: the dependent matrix
-    :param model: the model to use to get predictions
+    Parameters
+    ----------
+    params : dict
+        The model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    model : flax model
+        the model to use to get predictions
+    lam : float
+        The weighting for the smoothness penalty portion of the loss function
+        
+    Returns
+    -------
+    The mean loss value across the observations
     '''
     ## Define the squared loss for a single pair
     def squared_error(x, y):
         preds = model.apply(params, x)[0, :]
-        pred_diffs = jnp.diff(preds)
         loss = jnp.inner(y - preds, y - preds) / 2.0
+        ## The sum the squared difference between the successive predictions
+        pred_diffs = jnp.diff(preds)
         pen = lam * jnp.inner(pred_diffs, pred_diffs) / 2.0
         return loss + pen
     ## vectorize the previous to compute the average of the loss on all samples
     return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
+
+
+class expMLP_(nn.Module):
+    num_feats: int
+    num_output: int
+    batch_size: int
+    
+    def setup(self):
+        ## self.param: Declares and returns a parameter in this Module.
+        ## nn.init..: Builds an initializer that returns real normally-distributed random arrays.
+        self.W1 = self.param('W1', nn.initializers.normal(.1), (self.num_feats, self.num_feats))
+        self.b1 = self.param('b1', nn.initializers.uniform(.1), (self.batch_size, self.num_feats))
+        
+        self.W2 = self.param('W2', nn.initializers.normal(.1), (self.num_feats, self.num_output))
+        self.b2 = self.param('b2', nn.initializers.uniform(.1), (self.batch_size, self.num_output))
+    
+    def __call__(self, inputs):
+        x = inputs
+        ## first layer
+        x = jnp.matmul(x, self.W1) + self.b1
+        ## second layer
+        x = jnp.matmul(x, self.W2) + self.b2
+        ## force positive
+        x = jnp.exp(x)
+        return x
+    
+class expMLP(nn.Module):
+    num_feats: int
+    num_output: int
+    batch_size: int
+    
+    def setup(self):
+        ## self.param: Declares and returns a parameter in this Module.
+        ## nn.init..: Builds an initializer that returns real normally-distributed random arrays.
+        self.W1 = self.param('W1', nn.initializers.normal(.1), (self.num_feats, self.num_output))
+        self.b1 = self.param('b1', nn.initializers.uniform(.1), (1, 1))
+        
+    def __call__(self, inputs):
+        x = inputs
+        ## first layer
+        x = jnp.matmul(x, self.W1) + self.b1
+        ## force positive
+        x = jnp.exp(x)
+        return x
+    
+    
+def exp_loss(params, x, y, model, lam = 0.05):
+    '''Calculate the negative maximum likelihood for a matrix of snow predictions for an exponential distribution
+    
+    Parameters
+    ----------
+    params : dict
+        The model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    model : flax model
+        the model to use to get predictions
+        
+    Returns
+    -------
+    The mean squared error across the observations
+    '''
+    ## Define the squared loss for a single pair
+    def neg_exp_log_likelihood(x, y):
+        preds = model.apply(params, x)[0, :]
+        ## match scale parameter of scipy.stats.expon
+        ## pdf = (1 / beta) * exp(-x / beta)
+        ## beta = predicted value
+        ## x = the observed value aka y
+        ## ln(pdf) = ln(1 / beta) + ln(exp(-x / beta))
+        ## ln(pdf) = -ln(beta) - x / beta
+        ll = -jnp.log(preds) - y / preds
+        pred_diffs = jnp.diff(preds)
+        pen = lam * jnp.inner(pred_diffs, pred_diffs) / 2.0
+        ## The optimization is minimizing our loss function, but we are 
+        ## maximizing the log likelihood so we have to minimzize the negative
+        ## log likehood
+        nll = jnp.sum(-ll) + pen
+        return nll
+    ## vectorize the previous to compute the average of the loss on all samples
+    return jnp.mean(jax.vmap(neg_exp_log_likelihood)(x, y), axis = 0)
 
 class hurdleMLP(nn.Module):
     '''Predict both P(any snow) & E[snow]'''
@@ -161,14 +268,19 @@ def run_sgd(model, params, x, y, loss_fn, num_iter = 101):
     loss_grad_fn = jax.value_and_grad(model_loss)
 
     for i in range(num_iter):
-        x_batch, y_batch = get_batch(x = x, y = y)
+        x_batch, y_batch = get_batch(x = x, y = y, n = 120)
         loss_val, grads = loss_grad_fn(params, x_batch, y_batch)
         updates, opt_state = tx.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
         grad_max = jax.tree_util.tree_map(lambda x: jnp.max(x), grads)
+        max_pred = jnp.max(model.apply(params, x_batch))
         if i % 10 == 0:
             print(f'Loss step {i}: {loss_val}')
             print(f'Max Gradient: {grad_max}')
+            print(f'Max Prediction: {max_pred}')
+        
+        if jnp.isnan(loss_val):
+            break
     
     return params, loss_val
     
@@ -195,10 +307,19 @@ if __name__ == '__main__':
     print('Smooth Model')
     #smooth_params, smooth_loss = run_sgd(model, params2, x_log, y_log, smooth_squared_loss)
     
-    model_hurdle = hurdleMLP(num_feats = x.shape[1], 
-                             num_output = y.shape[1],
-                             batch_size = 20)
-    params_hurdle = model_hurdle.init(key1, x[:model.batch_size])
-    print('Hurdle Model')
-    hurdle_params, hurdle_loss_val = run_sgd(model_hurdle, params_hurdle, x, y, hurdle_loss)
+    model_exp = expMLP(num_feats = x.shape[1], 
+                       num_output = y.shape[1], 
+                       batch_size = 20)
+    params_exp = model_exp.init(key1, x[:model.batch_size])
+    params_exp_fit, loss_val_exp = run_sgd(model_exp, params_exp, x, y, exp_loss, num_iter = 101)
     
+    # model_hurdle = hurdleMLP(num_feats = x.shape[1], 
+    #                          num_output = y.shape[1],
+    #                          batch_size = 20)
+    # params_hurdle = model_hurdle.init(key1, x[:model.batch_size])
+    # print('Hurdle Model')
+    # hurdle_params, hurdle_loss_val = run_sgd(model_hurdle, params_hurdle, x, y, hurdle_loss)
+    
+## the issue could be two fold:
+# 1. Negative values in y
+#+ 2. all 0 values
