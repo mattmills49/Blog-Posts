@@ -1,0 +1,215 @@
+---
+title: "JAX for Regression and Classification"
+format:
+	gfm:
+		preview-mode: raw
+keep-ipynb: True
+---
+
+
+```{python}
+import numpy as np
+import pandas as pd
+from plotnine import *
+import itertools as it
+import functools as ft
+import pickle
+
+import jax
+from typing import Any, Callable, Sequence
+from jax import random, numpy as jnp
+import flax
+from flax import linen as nn
+import optax
+from jax.scipy.special import expit
+
+runfile('../helpers.py')
+
+def load_data(data_str = 'rain_{sample}_data.parquet', y_cols = [f'day_{i}' for i in range(90, 120)]):
+    '''Load in data and return the training and testing arrays'''
+    
+    train_df = pd.read_parquet(data_str.format(sample = 'train'))
+    X_train = train_df.loc[:, filter_list(lambda x: x not in y_cols, train_df.columns)].copy()
+    Y_train = train_df.loc[:, y_cols].copy()
+    
+    test_df = pd.read_parquet(data_str.format(sample = 'test'))
+    X_test = test_df.loc[:, filter_list(lambda x: x not in y_cols, train_df.columns)].copy()
+    Y_test = test_df.loc[:, y_cols].copy()
+    
+    return {'train': {'X': jnp.asarray(X_train), 'Y': jnp.asarray(Y_train)},
+            'test': {'X': jnp.asarray(X_test), 'Y': jnp.asarray(Y_test)}}
+
+
+data = load_data()
+x = data['train']['X']
+y = data['train']['Y']
+x_test = data['test']['X']
+y_test = data['test']['Y']
+```
+
+
+```{python}
+class simpleMLP(nn.Module):
+    num_feats: int
+    num_output: int
+    batch_size: int
+    
+    def setup(self):
+        ## self.param: Declares and returns a parameter in this Module.
+        ## nn.init..: Builds an initializer that returns real normally-distributed random arrays.
+        self.W1 = self.param('W1', nn.initializers.normal(.1), (self.num_feats, self.num_feats))
+        self.b1 = self.param('b1', nn.initializers.uniform(.1), (1, self.num_feats))
+        
+        self.W2 = self.param('W2', nn.initializers.normal(.1), (self.num_feats, self.num_output))
+        self.b2 = self.param('b2', nn.initializers.uniform(.1), (1, self.num_output))
+    
+    def __call__(self, inputs):
+        x = inputs
+        ## first layer
+        x = jnp.matmul(x, self.W1) + self.b1
+        ## second layer
+        x = jnp.matmul(x, self.W2) + self.b2
+        return x
+        
+
+def squared_loss(params, x, y, model):
+    '''Calculate the squared error loss for a matrix of rain predictions
+    
+    Parameters
+    ----------
+    params : dict
+        The model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    model : flax model
+        the model to use to get predictions
+        
+    Returns
+    -------
+    The mean squared error across the observations
+    '''
+    ## Define the squared loss for a single pair
+    def squared_error(x, y):
+        ## Because of the bias term it returns an "array" of size (1,1)
+        preds = model.apply(params, x)[:, 0]
+        results = jnp.inner(y - preds, y - preds) / 2.0
+        return results
+    ## vectorize the previous to compute the average of the loss on all samples
+    return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
+```
+
+
+```{python}
+def run_sgd(model, params, x, y, loss_fn, num_iter = 101):
+    model_loss = ft.partial(loss_fn, model = model)
+    
+    tx = optax.adam(learning_rate = 0.05)
+    opt_state = tx.init(params)
+    loss_grad_fn = jax.value_and_grad(model_loss)
+
+    for i in range(num_iter):
+        x_batch, y_batch = get_batch(x = x, y = y)
+        loss_val, grads = loss_grad_fn(params, x_batch, y_batch)
+        updates, opt_state = tx.update(grads, opt_state)
+        params = optax.apply_updates(params, updates)
+        grad_max = jax.tree_util.tree_map(lambda x: jnp.max(x), grads)
+        max_pred = jnp.max(model.apply(params, x_batch))
+        if i % 10 == 0:
+            print(f'Loss step {i}: {loss_val}')
+            #print(f'Max Gradient: {grad_max}')
+            #print(f'Max Prediction: {max_pred}')
+        
+        if jnp.isnan(loss_val):
+            break
+    
+    return params, loss_val
+```
+
+```{python}
+key1, key2 = random.split(random.key(0))
+base_model = simpleMLP(num_feats = x.shape[1], 
+                       num_output = y.shape[1], 
+                       batch_size = 200)
+    
+base_params = base_model.init(key1, x[:base_model.batch_size])
+print('Baseline Model')
+base_params, base_lossval = run_sgd(base_model, base_params, x, y, squared_loss)
+```
+
+```{python}
+x_test_batch, y_test_batch = get_batch(x_test, y_test)
+y_test_preds = base_model.apply(base_params, x_test_batch)
+
+def convert_y_to_df(y_array):
+    y_df = pd.DataFrame(y_array, columns = [f'day_{i}' for i in range(90, 120)])
+    y_df['obs'] = np.arange(1, y_df.shape[0] + 1)
+    y_df_tall = y_df.melt(id_vars = 'obs', var_name = 'day', value_name = 'pred')
+    y_df_tall['day_num'] = y_df_tall['day'].str.extract('([0-9]+)').astype('int')
+    return y_df_tall
+
+y_test_preds_df = convert_y_to_df(y_test_preds)
+```
+
+
+```{python}
+(ggplot(sample_group(y_test_preds_df, 'obs', n = 5), aes(x = 'day_num', y = 'pred', group = 'obs')) +
+geom_line(aes(color = 'obs.astype("str")')) +
+theme_custom() +
+guides(color = None)
+)
+
+```
+
+```{python}
+class posMLP(nn.Module):
+    num_feats: int
+    num_output: int
+    batch_size: int
+    
+    def setup(self):
+        ## self.param: Declares and returns a parameter in this Module.
+        ## nn.init..: Builds an initializer that returns real normally-distributed random arrays.
+        self.W1 = self.param('W1', nn.initializers.normal(.1), (self.num_feats, self.num_feats))
+        self.b1 = self.param('b1', nn.initializers.uniform(.1), (1, self.num_feats))
+        
+        self.W2 = self.param('W2', nn.initializers.normal(.1), (self.num_feats, self.num_output))
+        self.b2 = self.param('b2', nn.initializers.uniform(.1), (1, self.num_output))
+    
+    def __call__(self, inputs):
+        x = inputs
+        ## first layer
+        x = jnp.matmul(x, self.W1) + self.b1
+        ## second layer
+        x = jnp.matmul(x, self.W2) + self.b2
+        return x
+        
+
+def squared_loss(params, x, y, model):
+    '''Calculate the squared error loss for a matrix of rain predictions
+    
+    Parameters
+    ----------
+    params : dict
+        The model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    model : flax model
+        the model to use to get predictions
+        
+    Returns
+    -------
+    The mean squared error across the observations
+    '''
+    ## Define the squared loss for a single pair
+    def squared_error(x, y):
+        ## Because of the bias term it returns an "array" of size (1,1)
+        preds = model.apply(params, x)[:, 0]
+        results = jnp.inner(y - preds, y - preds) / 2.0
+        return results
+    ## vectorize the previous to compute the average of the loss on all samples
+    return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
+```
