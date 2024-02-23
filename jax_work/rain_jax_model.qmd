@@ -50,9 +50,10 @@ y_test = data['test']['Y']
 
 ```{python}
 class simpleMLP(nn.Module):
+    '''Builds a simple 2 layer regression model'''
     num_feats: int
     num_output: int
-    batch_size: int
+    batch_size: int ## not used in this model but keeping for code continuity
     
     def setup(self):
         ## self.param: Declares and returns a parameter in this Module.
@@ -92,8 +93,8 @@ def squared_loss(params, x, y, model):
     '''
     ## Define the squared loss for a single pair
     def squared_error(x, y):
-        ## Because of the bias term it returns an "array" of size (1,1)
-        preds = model.apply(params, x)[:, 0]
+        ## Because of the bias term it returns an "array" of size (1,n)
+        preds = model.apply(params, x)[0, :]
         results = jnp.inner(y - preds, y - preds) / 2.0
         return results
     ## vectorize the previous to compute the average of the loss on all samples
@@ -102,25 +103,58 @@ def squared_loss(params, x, y, model):
 
 
 ```{python}
+def get_batch(x, y, n = 200):
+    '''Returns a random subset of size n of the model data'''
+    batch_rows = np.random.randint(low = 0, high = x.shape[0], size = n)
+    return x[batch_rows], y[batch_rows]
+
+
 def run_sgd(model, params, x, y, loss_fn, num_iter = 101):
+    '''runs stochastic gradient descent
+
+    Parameters
+    ----------
+    model : nn.Module
+        The defined flax model object
+    params : dict
+        The current model parameters
+    x : jax array
+        the input matrix
+    y : jax array
+        the dependent matrix
+    loss_fn : function
+        the loss function
+    num_iter : int
+        the number of iterations to run SGD
+        
+    Returns
+    -------
+    a tuple of the final parameter dictionary and the current value of the loss function
+    '''
+    ## initialize specific model loss function for use with jax
     model_loss = ft.partial(loss_fn, model = model)
-    
+    ## get initial state with optax
     tx = optax.adam(learning_rate = 0.05)
     opt_state = tx.init(params)
+    ## calc initial loss and gradients
     loss_grad_fn = jax.value_and_grad(model_loss)
 
     for i in range(num_iter):
         x_batch, y_batch = get_batch(x = x, y = y)
         loss_val, grads = loss_grad_fn(params, x_batch, y_batch)
+        ## get updates for current parameters based off gradients
         updates, opt_state = tx.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
+        ## calculate max gradient for debugging
         grad_max = jax.tree_util.tree_map(lambda x: jnp.max(x), grads)
+        ## calculate max prediction for debugging
         max_pred = jnp.max(model.apply(params, x_batch))
         if i % 10 == 0:
             print(f'Loss step {i}: {loss_val}')
             #print(f'Max Gradient: {grad_max}')
             #print(f'Max Prediction: {max_pred}')
         
+        ## sometimes the gradients explode
         if jnp.isnan(loss_val):
             break
     
@@ -132,17 +166,20 @@ key1, key2 = random.split(random.key(0))
 base_model = simpleMLP(num_feats = x.shape[1], 
                        num_output = y.shape[1], 
                        batch_size = 200)
-    
+## initialize model
 base_params = base_model.init(key1, x[:base_model.batch_size])
-print('Baseline Model')
+print('Baseline Model Loss values')
 base_params, base_lossval = run_sgd(base_model, base_params, x, y, squared_loss)
 ```
+
+We can visualize some sample predictions to see what is going on
 
 ```{python}
 x_test_batch, y_test_batch = get_batch(x_test, y_test)
 y_test_preds = base_model.apply(base_params, x_test_batch)
 
 def convert_y_to_df(y_array):
+    '''convert the horizontal vector to vertical df for plotting'''
     y_df = pd.DataFrame(y_array, columns = [f'day_{i}' for i in range(90, 120)])
     y_df['obs'] = np.arange(1, y_df.shape[0] + 1)
     y_df_tall = y_df.melt(id_vars = 'obs', var_name = 'day', value_name = 'pred')
@@ -161,6 +198,8 @@ guides(color = None)
 )
 
 ```
+
+From here we can tailor our model to one that fits the specific problem at hand. In this case, we know we can't have negative amounts of rain. There are a couple of ways one could fix this but we will do the simplest thing and simply add a positive activation layer. 
 
 ```{python}
 class posMLP(nn.Module):
@@ -183,11 +222,38 @@ class posMLP(nn.Module):
         x = jnp.matmul(x, self.W1) + self.b1
         ## second layer
         x = jnp.matmul(x, self.W2) + self.b2
+        x = nn.activation.relu(x)
         return x
-        
+```
 
-def squared_loss(params, x, y, model):
-    '''Calculate the squared error loss for a matrix of rain predictions
+```{python}
+#key1, key2 = random.split(random.key(0))
+pos_model = posMLP(num_feats = x.shape[1], 
+                   num_output = y.shape[1], 
+                   batch_size = 200)
+## initialize model
+pos_params = pos_model.init(key1, x[:pos_model.batch_size])
+print('Baseline Model Loss values')
+pos_params, base_lossval = run_sgd(pos_model, pos_params, x, y, squared_loss)
+```
+
+
+```{python}
+y_test_preds_pos = pos_model.apply(pos_params, x_test_batch)
+y_test_preds_df_pos = convert_y_to_df(y_test_preds_pos)
+
+(ggplot(sample_group(y_test_preds_df_pos, 'obs', n = 5), aes(x = 'day_num', y = 'pred', group = 'obs')) +
+geom_line(aes(color = 'obs.astype("str")')) +
+theme_custom() +
+guides(color = None) +
+ggtitle('Predictions from a Positive Only Model')
+)
+```
+
+
+```{python}
+def smooth_squared_loss(params, x, y, model, lam = 0.0):
+    '''Calculate the squared error loss plus a smoothness penalty for a matrix of rain predictions
     
     Parameters
     ----------
@@ -199,17 +265,38 @@ def squared_loss(params, x, y, model):
         the dependent matrix
     model : flax model
         the model to use to get predictions
+    lam : float
+        The weighting for the smoothness penalty portion of the loss function
         
     Returns
     -------
-    The mean squared error across the observations
+    The mean penalty value across the observations
     '''
     ## Define the squared loss for a single pair
     def squared_error(x, y):
-        ## Because of the bias term it returns an "array" of size (1,1)
         preds = model.apply(params, x)[:, 0]
-        results = jnp.inner(y - preds, y - preds) / 2.0
-        return results
+        loss = jnp.inner(y - preds, y - preds) / 2.0
+        ## sum the squared difference between the successive predictions
+        pred_diffs = jnp.diff(preds)
+        pen = lam * jnp.inner(pred_diffs, pred_diffs) / 2.0
+        return loss + pen
     ## vectorize the previous to compute the average of the loss on all samples
     return jnp.mean(jax.vmap(squared_error)(x, y), axis = 0)
 ```
+
+```{python}
+pos_params2 = pos_model.init(key1, x[:pos_model.batch_size])
+print('Baseline Model Loss values')
+pos_params2, pos_lossval2 = run_sgd(pos_model, pos_params2, x, y, smooth_squared_loss)
+
+y_test_preds_pos2 = pos_model.apply(pos_params2, x_test_batch)
+y_test_preds_df_pos2 = convert_y_to_df(y_test_preds_pos2)
+
+(ggplot(sample_group(y_test_preds_df_pos2, 'obs', n = 5), aes(x = 'day_num', y = 'pred', group = 'obs')) +
+geom_line(aes(color = 'obs.astype("str")')) +
+theme_custom() +
+guides(color = None) +
+ggtitle('Predictions from a Smooth, Positive Only Model')
+)
+```
+
