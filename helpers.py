@@ -180,3 +180,10 @@ def theme_custom(**kwargs):
     theme_args = {**custom_theme_args, **kwargs}
     
     return theme(**theme_args)
+
+
+def sample_group(df, group_cols, n = 10):
+    group_df = df[group_cols].drop_duplicates()
+    group_df_sample = group_df.sample(n = n)
+    select_df = pd.merge(df, group_df_sample, on = group_cols, how = 'inner')
+    return select_df
