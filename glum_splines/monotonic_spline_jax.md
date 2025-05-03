@@ -146,31 +146,11 @@ full code it is available on my github.
 flower_df = pl.read_csv(FLOWER_DATA, truncate_ragged_lines=True)
 flower_df.columns = ['year', 'flower_doy', 'flower_date', 'source', 'ref']
 flower_df_clean = flower_df.filter(pl.col('flower_doy').is_not_null())
-flower_df_clean.head()
+flower_df_clean.head().to_pandas().to_markdown(index=False)
 ```
 
-```{=html}
-<div><style>
-.dataframe > thead > tr,
-.dataframe > tbody > tr {
-  text-align: right;
-  white-space: pre-wrap;
-}
-</style>
-<small>shape: (5, 5)</small>
-```
-  year   flower_doy   flower_date   source   ref
-  ------ ------------ ------------- -------- ----------------------------
-  i64    i64          i64           i64      str
-  812    92           401           1        \"NIHON-KOKI\"
-  815    105          415           1        \"NIHON-KOKI\"
-  831    96           406           1        \"NIHON-KOKI\"
-  851    108          418           1        \"MONTOKUTENNO-JITSUROKU\"
-  853    104          414           1        \"MONTOKUTENNO-JITSUROKU\"
+    '|   year |   flower_doy |   flower_date |   source | ref                    |\n|-------:|-------------:|--------------:|---------:|:-----------------------|\n|    812 |           92 |           401 |        1 | NIHON-KOKI             |\n|    815 |          105 |           415 |        1 | NIHON-KOKI             |\n|    831 |           96 |           406 |        1 | NIHON-KOKI             |\n|    851 |          108 |           418 |        1 | MONTOKUTENNO-JITSUROKU |\n|    853 |          104 |           414 |        1 | MONTOKUTENNO-JITSUROKU |'
 
-```{=html}
-</div>
-```
 ``` {.python .cell-code}
 # calc splines
 yearly_spline = SplineTransformer(n_knots = 50, include_bias = True).fit_transform(flower_df_clean[['year']])
