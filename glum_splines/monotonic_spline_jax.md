@@ -3,6 +3,7 @@ execute:
   echo: false
   message: false
   output: asis
+  results: asis
   warning: false
 title: Fitting Monotonic Smooths in JAX using Shape Constrained Additive
   Models
@@ -224,12 +225,13 @@ def apply_shape_constraint(coef_b, direction='dec'):
 
 test_coefs = np.random.uniform(size=5)
 mono_coefs = apply_shape_constraint(test_coefs)
-print(f'Latent Coefficients: {np.round(test_coefs, 2)}')
+print(f'Latent Coefficients: {np.round(test_coefs, 2)}\n')
 print(f'Constrained Coefficients: {np.round(mono_coefs, 2)}')
 ```
 
-Latent Coefficients: \[0.56 0.56 0.45 0.72 0.73\] Constrained
-Coefficients: \[ 1.76 0. -1.56 -3.62 -5.69\]
+Latent Coefficients: \[0.81 0.08 0.37 0.3 0.17\]
+
+Constrained Coefficients: \[ 2.24 1.16 -0.29 -1.64 -2.83\]
 
 ### Fiting a Model with JAX
 
