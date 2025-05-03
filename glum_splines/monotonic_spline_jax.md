@@ -149,7 +149,7 @@ flower_df_clean = flower_df.filter(pl.col('flower_doy').is_not_null())
 flower_df_clean.head().to_pandas().to_markdown(index=False)
 ```
 
-    '|   year |   flower_doy |   flower_date |   source | ref                    |\n|-------:|-------------:|--------------:|---------:|:-----------------------|\n|    812 |           92 |           401 |        1 | NIHON-KOKI             |\n|    815 |          105 |           415 |        1 | NIHON-KOKI             |\n|    831 |           96 |           406 |        1 | NIHON-KOKI             |\n|    851 |          108 |           418 |        1 | MONTOKUTENNO-JITSUROKU |\n|    853 |          104 |           414 |        1 | MONTOKUTENNO-JITSUROKU |'
+    |   year |   flower_doy |   flower_date |   source | ref                    |\n|-------:|-------------:|--------------:|---------:|:-----------------------|\n|    812 |           92 |           401 |        1 | NIHON-KOKI             |\n|    815 |          105 |           415 |        1 | NIHON-KOKI             |\n|    831 |           96 |           406 |        1 | NIHON-KOKI             |\n|    851 |          108 |           418 |        1 | MONTOKUTENNO-JITSUROKU |\n|    853 |          104 |           414 |        1 | MONTOKUTENNO-JITSUROKU |
 
 ``` {.python .cell-code}
 # calc splines
