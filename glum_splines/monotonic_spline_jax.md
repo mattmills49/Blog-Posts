@@ -2,6 +2,7 @@
 execute:
   echo: false
   message: false
+  output: asis
   warning: false
 title: Fitting Monotonic Smooths in JAX using Shape Constrained Additive
   Models
@@ -137,9 +138,10 @@ Warming. There are natural, short-term fluctuations in this data based
 on the local climate in Japan so an accurate model of the year to year
 fluctuations will not be monotonically decreasing. For this post I'm
 only interested in the long-term trend which I'm going to assume only
-goes one way. We'll read in some data and build our model.
+goes one way. We'll read in some data and build our model. I'm only
+going to show some code cells and output, but if you want to see the
+full code it is available on my github.
 
-::: cell
 ``` {.python .cell-code}
 flower_df = pl.read_csv(FLOWER_DATA, truncate_ragged_lines=True)
 flower_df.columns = ['year', 'flower_doy', 'flower_date', 'source', 'ref']
@@ -147,7 +149,6 @@ flower_df_clean = flower_df.filter(pl.col('flower_doy').is_not_null())
 flower_df_clean.head()
 ```
 
-::: {.cell-output .cell-output-display execution_count="5"}
 ```{=html}
 <div><style>
 .dataframe > thead > tr,
@@ -170,10 +171,6 @@ flower_df_clean.head()
 ```{=html}
 </div>
 ```
-:::
-:::
-
-::: cell
 ``` {.python .cell-code}
 # calc splines
 yearly_spline = SplineTransformer(n_knots = 50, include_bias = True).fit_transform(flower_df_clean[['year']])
@@ -183,19 +180,11 @@ DV = 'flower_moy'
 base_model = GeneralizedLinearRegressor(fit_intercept=False).fit(X=yearly_spline, y=flower_df_clean[DV])
 flower_df_clean = flower_df_clean.with_columns(base_preds = base_model.predict(yearly_spline))
 ```
-:::
 
-::: {.cell execution_count="9"}
-::: {.cell-output .cell-output-display}
 ![](monotonic_spline_jax_files/figure-markdown/cell-5-output-1.png)
-:::
 
-::: {.cell-output .cell-output-display execution_count="9"}
     <Figure Size: (640 x 480)>
-:::
-:::
 
-::: cell
 ``` {.python .cell-code}
 def generate_constraint_matrix(coefs, direction='dec'):
     '''Generate a constraint matrix for a monotonic function. 
@@ -223,16 +212,12 @@ cons_matrix = generate_constraint_matrix(base_model.coef_)
 cons_matrix[:5, :5]
 ```
 
-::: {.cell-output .cell-output-display execution_count="11"}
     array([[ 1.,  0.,  0.,  0.,  0.],
            [ 1., -1.,  0.,  0.,  0.],
            [ 1., -1., -1.,  0.,  0.],
            [ 1., -1., -1., -1.,  0.],
            [ 1., -1., -1., -1., -1.]])
-:::
-:::
 
-::: cell
 ``` {.python .cell-code}
 def apply_shape_constraint(coef_b, direction='dec'):
     """
@@ -251,11 +236,8 @@ print(f'Latent Coefficients: {np.round(test_coefs, 2)}')
 print(f'Constrained Coefficients: {np.round(mono_coefs, 2)}')
 ```
 
-::: {.cell-output .cell-output-stdout}
-    Latent Coefficients: [0.56 0.56 0.45 0.72 0.73]
-    Constrained Coefficients: [ 1.76  0.   -1.56 -3.62 -5.69]
-:::
-:::
+Latent Coefficients: \[0.56 0.56 0.45 0.72 0.73\] Constrained
+Coefficients: \[ 1.76 0. -1.56 -3.62 -5.69\]
 
 ### Fiting a Model with JAX
 
@@ -273,7 +255,6 @@ optimization function `minimize`. I'll write a helper function to get
 the predictions and then write functions to calculate our loss function,
 gradients, and hessians.
 
-::: cell
 ``` {.python .cell-code}
 def predict_mono_bspline(coefs, X=yearly_spline, direction='dec'):
     """
@@ -304,9 +285,7 @@ def calc_loss(coefs, X=yearly_spline, y=flower_df_clean['flower_moy'].to_numpy()
 loss_grad = jax.grad(calc_loss)
 loss_hess = jax.hessian(calc_loss)
 ```
-:::
 
-::: cell
 ``` {.python .cell-code}
 coefs = base_model.coef_
 
@@ -323,35 +302,17 @@ result = minimize(
 )
 ```
 
-::: {.cell-output .cell-output-stdout}
-    Optimization terminated successfully.
-             Current function value: 0.042299
-             Iterations: 101
-             Function evaluations: 154
-             Gradient evaluations: 154
-             Hessian evaluations: 101
-:::
-:::
+Optimization terminated successfully. Current function value: 0.042299
+Iterations: 101 Function evaluations: 154 Gradient evaluations: 154
+Hessian evaluations: 101
 
-::: {.cell execution_count="32"}
-::: {.cell-output .cell-output-display}
 ![](monotonic_spline_jax_files/figure-markdown/cell-11-output-1.png)
-:::
 
-::: {.cell-output .cell-output-display execution_count="32"}
     <Figure Size: (640 x 480)>
-:::
-:::
 
 We can zoom in on the parts of the trend that actually decrease to see
 the difference in the relevant time period more clearly.
 
-::: {.cell execution_count="34"}
-::: {.cell-output .cell-output-display}
 ![](monotonic_spline_jax_files/figure-markdown/cell-12-output-1.png)
-:::
 
-::: {.cell-output .cell-output-display execution_count="34"}
     <Figure Size: (640 x 480)>
-:::
-:::
