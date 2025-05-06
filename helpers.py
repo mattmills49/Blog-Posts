@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from plotnine import *
 
 import itertools as it
 import functools as ft
@@ -187,3 +188,36 @@ def sample_group(df, group_cols, n = 10):
     group_df_sample = group_df.sample(n = n)
     select_df = pd.merge(df, group_df_sample, on = group_cols, how = 'inner')
     return select_df
+
+
+import re
+from pathlib import Path
+
+def relink_quarto_images(md_path: str | Path, image_loc: str) -> None:
+    """
+    Rewrite Quarto image links in *md_path* so that
+
+        ![](monotonic_spline_jax_files/figure-markdown/<name>.png)
+
+    becomes
+
+        ![](../img/monotonic_spline_jax/<name>.png)
+
+    Parameters
+    ----------
+    md_path : str | Path
+        Markdown file to edit in‑place.
+    image_loc : str
+        Base folder name that Quarto created (e.g. 'monotonic_spline_jax').
+    """
+    md_path = Path(md_path)
+
+    # e.g.  ![](monotonic_spline_jax_files/figure-markdown/cell-11-output-1.png)
+    patt = re.compile(
+        rf"""!\[\]\({re.escape(image_loc)}_files/figure-markdown/([^)\s]+)\)"""
+    )
+    repl = rf"![](/img/{image_loc}/\1)"
+
+    content = md_path.read_text(encoding="utf-8")
+    new_content = patt.sub(repl, content)
+    md_path.write_text(new_content, encoding="utf-8")
