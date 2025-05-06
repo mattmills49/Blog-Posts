@@ -52,14 +52,42 @@ When we add learned coefficients for each spline we are fitting a model:
 
 ![](monotonic_spline_jax_files/figure-markdown/cell-4-output-1.png)
 
-    <Figure Size: (500 x 300)>
+    <Figure Size: (640 x 480)>
 
 With a reparameterization we can model trends with a specific shape, for
 example a monotonically increasing function.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-5-output-1.png)
+```{=html}
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
 
-    <Figure Size: (500 x 300)>
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+```
+      x          basis      value      coef       fitted     fitted_mono
+  --- ---------- ---------- ---------- ---------- ---------- -------------
+  0   0.000000   spline_0   0.166667   1.773956   0.295659   0.182363
+  1   0.050251   spline_0   0.152041   1.773956   0.269715   0.166360
+  2   0.100503   spline_0   0.138298   1.773956   0.245334   0.151322
+  3   0.150754   spline_0   0.125408   1.773956   0.222468   0.137219
+  4   0.201005   spline_0   0.113345   1.773956   0.201070   0.124020
+
+```{=html}
+
+</div>
+```
+![](monotonic_spline_jax_files/figure-markdown/cell-6-output-1.png)
+
+    <Figure Size: (640 x 480)>
 
 A traditional B-spline can be expressed as
 
@@ -213,7 +241,7 @@ base_model = GeneralizedLinearRegressor(fit_intercept=False).fit(X=yearly_spline
 flower_df_clean = flower_df_clean.with_columns(base_preds = base_model.predict(yearly_spline))
 ```
 
-![](monotonic_spline_jax_files/figure-markdown/cell-8-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-9-output-1.png)
 
     <Figure Size: (640 x 480)>
 
@@ -345,14 +373,14 @@ Optimization terminated successfully. Current function value: 0.042299
 Iterations: 101 Function evaluations: 154 Gradient evaluations: 154
 Hessian evaluations: 101
 
-![](monotonic_spline_jax_files/figure-markdown/cell-14-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-15-output-1.png)
 
     <Figure Size: (640 x 480)>
 
 We can zoom in on the parts of the trend that actually decrease to see
 the difference in the relevant time period more clearly.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-15-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-16-output-1.png)
 
     <Figure Size: (640 x 480)>
 
