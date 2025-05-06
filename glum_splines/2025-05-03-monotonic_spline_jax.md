@@ -1,13 +1,10 @@
 ---
-execute:
-  echo: false
-  message: false
-  output: asis
-  results: asis
-  warning: false
-title: Fitting Monotonic Smooths in JAX using Shape Constrained Additive
+layout: post
+title: How to Fit Monotonic Smooths in JAX using Shape Constrained Additive
   Models
-toc-title: Table of contents
+math: true
+image: /img/monotonic_spline_jax/cell-14-output-1.png
+share-img: /img/monotonic_spline_jax/cell-14-output-1.png
 ---
 
 Let's say you have a trend you are trying to model that you know to be
@@ -44,23 +41,17 @@ individual basis splines (**B-S**pline) that cover the range of the
 data. A GAM is usually expressed as a B-spline with coefficients for
 each basis that are learned from the data while estimating some trend.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-3-output-1.png)
-
-    <Figure Size: (500 x 300)>
+![](/img/monotonic_spline_jax/cell-3-output-1.png)
 
 When we add learned coefficients for each spline we are fitting a model
 $\hat{Y} = \mathbf{X}\mathbf{\beta}$:
 
-![](monotonic_spline_jax_files/figure-markdown/cell-4-output-1.png)
-
-    <Figure Size: (640 x 480)>
+![](.img/monotonic_spline_jax/cell-4-output-1.png)
 
 With a reparameterization we can model trends with a specific shape, for
 example a monotonically increasing function.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-5-output-1.png)
-
-    <Figure Size: (640 x 480)>
+![](/img/monotonic_spline_jax/cell-5-output-1.png)
 
 How do we do this reparameterization? A traditional B-spline can be
 expressed as
@@ -101,7 +92,7 @@ first coefficient in our new coefficient vector $\overline{\beta}$ as
 our first stricly positive coefficient:
 
 $$
-\overline{\beta_1} = \tilde{\beta_1} \\
+\overline{\beta_1} = \tilde{\beta_1}
 $$
 
 The next coefficient now needs to be less than this first value. One way
@@ -112,20 +103,20 @@ function) then we know that $\beta_1$ is strictly larger than
 $\tilde{\beta_1} - \tilde{\beta_2}$. We can repeat this logic the whole
 way down our vector of coefficients:
 
-$$
+{::nomarkdown}
 \begin{equation}
 \overline{\beta_1} = \tilde{\beta_1} \\
 \overline{\beta_2} = \tilde{\beta_1} - \tilde{\beta_2} \\
 \overline{\beta_3} = \tilde{\beta_1} - \tilde{\beta_2} - \tilde{\beta_3} \\
 \dots
 \end{equation}
-$$
+{:/nomarkdown}
 
 We don't have to write these equations out by hand, we can leverage a
 lower triangle matrix where all values are negative 1 except the first
 column.
 
-$$
+{::nomarkdown}
 \mathbf{\overline{\beta}} =
 \begin{bmatrix}
 1 & 0 & 0 & 0 \\
@@ -134,7 +125,7 @@ $$
 1 & -1 & -1 & -1 \\
 \end{bmatrix}
 \mathbf{\tilde{\beta}}
-$$
+{:/nomarkdown}
 
 The SCAM paper doesn't create this 2nd intermediate coefficient vector
 $\mathbf{\overline{\beta}}$ but instead just includes the constraint
@@ -157,13 +148,13 @@ of a constraint matrix. This penalty matrix uses the difference matrix
 to punish any difference between neighboring coefficients that goes
 against this desired trend.
 
-$$
+{::nomarkdown}
 \begin{bmatrix}
 -1 & 1 & 0 & 0 \\
 0 & -1 & 1 & 0 \\
 0 & 0 & -1 & 1 \\
 \end{bmatrix}
-$$
+{:/nomarkdown}
 
 For decreasing trends only positive values for $\beta_{i+1} - \beta_i$
 would contribute a penalty to the loss function, while a negative value
@@ -215,9 +206,7 @@ base_model = GeneralizedLinearRegressor(fit_intercept=False).fit(X=yearly_spline
 flower_df_clean = flower_df_clean.with_columns(base_preds = base_model.predict(yearly_spline))
 ```
 
-![](monotonic_spline_jax_files/figure-markdown/cell-8-output-1.png)
-
-    <Figure Size: (640 x 480)>
+![](/img/monotonic_spline_jax/cell-8-output-1.png)
 
 ``` {.python .cell-code}
 def generate_constraint_matrix(coefs, direction='dec'):
@@ -347,16 +336,12 @@ Optimization terminated successfully. Current function value: 0.042299
 Iterations: 101 Function evaluations: 154 Gradient evaluations: 154
 Hessian evaluations: 101
 
-![](monotonic_spline_jax_files/figure-markdown/cell-14-output-1.png)
-
-    <Figure Size: (640 x 480)>
+![](/img/monotonic_spline_jax/cell-14-output-1.png)
 
 We can zoom in on the parts of the trend that actually decrease to see
 the difference in the relevant time period more clearly.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-15-output-1.png)
-
-    <Figure Size: (640 x 480)>
+![](/img/monotonic_spline_jax/cell-15-output-1.png)
 
 ### Conclussion
 
