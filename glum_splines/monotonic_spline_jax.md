@@ -15,19 +15,20 @@ monotonically increasing or decreasing; this could be something like
 default as a function of risk, power usage as a function of temperature,
 or CO2 emissions over time. [Generalized Additive
 Models](http://statmills.com/2023-11-20-Penalized_Splines_Using_glum/)
-are a great general purpose modeling tool that you could use to model
-these relationships. It turns out that there are variations of GAMs that
-allow for enforcing a constraint on a spline curve; Penalized-splines
-(P-splines) and Shape Constrained Additive Models (SCAM). This contraint
-could be an always increasing or decreasing function, or even a convex
-or concave shape. P-splines use a penalty matrix to enfore the
-constraint by penalizing differences between neighboring coefficients.
-SCAMs use a different parameterization of a GAM that I wanted to learn
-more about. This blog post is an attempt to recreate the logic in the
-[SCAM
+(GAMs) are a great general purpose modeling tool that you could use to
+model these relationships, but they are unconstrained and could have
+undesired shape behavior. It turns out that there are variations of GAMs
+that allow for enforcing a constraint on a spline curve;
+Penalized-splines (P-splines) and Shape Constrained Additive Models
+(SCAM). This contraint could be an always increasing or decreasing
+function, or even a convex or concave shape. P-splines use a penalty
+matrix to enfore the constraint by penalizing differences between
+neighboring coefficients. SCAMs use a different parameterization of a
+GAM that I wanted to learn more about. This blog post is an attempt to
+recreate the logic in the [SCAM
 paper](https://www.researchgate.net/publication/271740857_Shape_constrained_additive_models)
-using python and JAX. If you wanted to use these models for real there
-is an [R-package for
+using python and JAX. If you want to use these types of models for real
+there is an [R-package for
 SCAMs](https://cran.r-project.org/web/packages/scam/index.html) and a
 P-spline implementation in python using the [pygam
 library](https://pygam.readthedocs.io/en/latest/api/api.html#spline-term).
@@ -38,10 +39,27 @@ Shape Constrained Additive Models :) SCAMs use a reparameterization of a
 traditional B-spline basis to enforce a constraint. If you want a
 refresher on B-Splines and GAMs I wrote an [introductory focused
 post](http://statmills.com/2023-11-20-Penalized_Splines_Using_glum/)
-last year. This new expression of the B-spline basis has two
-components: 1. A transformation on the coefficients of a traditional
-B-spline to ensure they are always positive 2. A constraint matrix
-inserted in the $\mathbf{X} \mathbf{\beta}$ multiplication.
+last year. Briefly though B-Splines are a basis expansion consisting of
+individual basis splines (**B-S**pline) that cover the range of the
+data. A GAM is usually expressed as a B-spline with coefficients for
+each basis that are learned from the data while estimating some trend.
+
+![](monotonic_spline_jax_files/figure-markdown/cell-3-output-1.png)
+
+    <Figure Size: (500 x 300)>
+
+When we add learned coefficients for each spline we are fitting a model:
+
+![](monotonic_spline_jax_files/figure-markdown/cell-4-output-1.png)
+
+    <Figure Size: (500 x 300)>
+
+With a reparameterization we can model trends with a specific shape, for
+example a monotonically increasing function.
+
+![](monotonic_spline_jax_files/figure-markdown/cell-5-output-1.png)
+
+    <Figure Size: (500 x 300)>
 
 A traditional B-spline can be expressed as
 
@@ -54,6 +72,11 @@ $\mathbf{\beta}$ are the $j$ coefficients found from fitting a model to
 the data. If we don't impose any constraints or penalties this could
 just be fit as a standard GLM. But now we want to force the curve to
 either always go up, or always go down.
+
+This new expression of the B-spline basis has two components: 1. A
+transformation on the coefficients of a traditional B-spline to ensure
+they are always positive 2. A constraint matrix inserted in the
+$\mathbf{X} \mathbf{\beta}$ multiplication.
 
 The first step of the reparameterization is simple enough, we apply the
 exponential function to our unconstrained coefficients:
@@ -71,15 +94,21 @@ for a decreasing trend. We know our transformed coefficients are
 strictly positive. So if we want our curve to always decrease, then each
 successive coefficient we multiply with our $X$ matrix needs to be
 strictly smaller than the previous coefficient. We can accomplish this
-by apply another reparameterization to our coefficients. Lets set the
-first coefficient in our new coefficient vector to be the first
-transformed coefficient. The next coefficient now needs to be less than
-this first value. One way to do that is to subtract our
-$\tilde{\beta_2}$ value from $\tilde{\beta_1}$ and use the result as the
-2nd transformed coefficient. Since we know $\tilde{\beta_2}$ is positive
-(from using the exponential function) then we know that $\beta_1$ is
-strictly larger than $\tilde{\beta_1} - \tilde{\beta_2}$. We can repeat
-this logic the whole way down our vector of coefficients:
+by applying another reparameterization to our coefficients. Lets set the
+first coefficient in our new coefficient vector $\overline{\beta}$ as
+our first stricly positive coefficient:
+
+$$
+\overline{\beta_1} = \tilde{\beta_1} \\
+$$
+
+The next coefficient now needs to be less than this first value. One way
+to do that is to subtract our $\tilde{\beta_2}$ value from
+$\tilde{\beta_1}$ and use the result as the 2nd transformed coefficient.
+Since we know $\tilde{\beta_2}$ is positive (from using the exponential
+function) then we know that $\beta_1$ is strictly larger than
+$\tilde{\beta_1} - \tilde{\beta_2}$. We can repeat this logic the whole
+way down our vector of coefficients:
 
 $$
 \begin{equation}
@@ -122,24 +151,34 @@ values by the basis matrix to generate our predictions.
 ### Comparison with P-splines
 
 P-splines enforce a monotonic constraint using a penalty matrix instead
-of a constraint matrix. This penalty matrix punishes any difference
-between neighboring coefficients that goes against this desired trend.
-So a positive value for $\beta_{i+1} - \beta_i$ would contribute a
-penalty to the loss function of the model using the P-spline, while a
-negative value would not contribute anything. If I have time for another
-post I'll do a more thorough comparison to see how the differences
-actually manifest in model fitting between the two methods.
+of a constraint matrix. This penalty matrix uses the difference matrix
+to punish any difference between neighboring coefficients that goes
+against this desired trend.
+
+$$
+\begin{bmatrix}
+-1 & 1 & 0 & 0 \\
+0 & -1 & 1 & 0 \\
+0 & 0 & -1 & 1 \\
+\end{bmatrix}
+$$
+
+For decreasing trends only positive values for $\beta_{i+1} - \beta_i$
+would contribute a penalty to the loss function, while a negative value
+would not contribute anything. If I have time for another post I'll do a
+more thorough comparison to see how the differences actually manifest in
+model fitting between the two methods.
 
 ### An Example: Japanese Cherry Blossom Data
 
 There is a phenomenal dataset of the first day of the Cherry Blossoms
-blooming in the Japanese Royal Gardens every year. I want to estimate
-the long-term trend of this date moving up over time due to Global
-Warming. There are natural, short-term fluctuations in this data based
-on the local climate in Japan so an accurate model of the year to year
-fluctuations will not be monotonically decreasing. For this post I'm
-only interested in the long-term trend which I'm going to assume only
-goes one way. We'll read in some data and build our model. I'm only
+blooming in the Japanese Royal Gardens every year since 812 AD. I want
+to estimate the long-term trend of this date moving up over time due to
+Global Warming. There are natural, short-term fluctuations in this data
+based on the local climate in Japan so an accurate model of the year to
+year fluctuations will not be monotonically decreasing. For this post
+I'm only interested in the long-term trend which I'm going to assume
+only goes one way. We'll read in some data and build our model. I'm only
 going to show some code cells and output, but if you want to see the
 full code it is available on my github.
 
@@ -174,7 +213,7 @@ base_model = GeneralizedLinearRegressor(fit_intercept=False).fit(X=yearly_spline
 flower_df_clean = flower_df_clean.with_columns(base_preds = base_model.predict(yearly_spline))
 ```
 
-![](monotonic_spline_jax_files/figure-markdown/cell-5-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-8-output-1.png)
 
     <Figure Size: (640 x 480)>
 
@@ -233,21 +272,27 @@ Latent Coefficients: \[0.81 0.08 0.37 0.3 0.17\]
 
 Constrained Coefficients: \[ 2.24 1.16 -0.29 -1.64 -2.83\]
 
-### Fiting a Model with JAX
+### Fitting a Model with JAX
 
 Previously I used the excellent `glum` package to fit a GAM using a
 penalty matrix. We can't use that approach for SCAMs though because the
-constraint is enforced at the model matrix level, not an additional
-penalty matrix. I thought this would be a great chance to use JAX. JAX
-is a "numpy + autodif" library in python that many advanced Deep
-Learning models are built with these days. The reason we would use JAX
-to fit our model is that JAX will calculate a derivative of a function
-automatically. So all we need to do is write a loss function that
-accepts our input, unconstrained parameters and JAX will automatically
-calculate 1st and 2nd order gradients that we can pass to scipy's
-optimization function `minimize`. I'll write a helper function to get
-the predictions and then write functions to calculate our loss function,
-gradients, and hessians.
+constraint is enforced as we get predictions at the model matrix level,
+not as an additional penalty in the loss function. So we need a way to
+learn the optimal coefficients directly. I thought this would be a great
+chance to use JAX. JAX is a "numpy + autodif" library in python that
+many advanced Deep Learning models are built with these days. The reason
+we would use JAX to fit our model is that JAX will calculate a
+derivative of a function automatically. So all we need to do is write a
+loss function that accepts our input parameters, the unconstrained
+coefficients, and JAX will automatically calculate 1st and 2nd order
+gradients that we can pass to scipy's optimization function `minimize`.
+I'll write a helper function to get the predictions and then write
+functions to calculate our loss function, gradients, and hessians. I do
+want to re-iterate again that our loss function and it's derivatives
+operate on the unconstrained parameter values before we exponentiate
+them. Then we (well really scipy) apply the necessary transformations at
+each run after applying the necessary gradient updates to the raw
+paramter values.
 
 ``` {.python .cell-code}
 def predict_mono_bspline(coefs, X=yearly_spline, direction='dec'):
@@ -257,18 +302,16 @@ def predict_mono_bspline(coefs, X=yearly_spline, direction='dec'):
     X: basis spline matrix.
     direction: 'inc' for increasing, 'dec' for decreasing.
     """
-    #intercept = coefs[jnp.array([0])]  # Extract intercept
-    #coef_b = coefs[1:]  # Shape-constrained coefficients
     coef_b = coefs  # Shape-constrained coefficients
     
     # Apply the shape constraint only to coef_b
     constrained_coefs = apply_shape_constraint(coef_b, direction)
-    #model_coefs = jnp.concat([intercept, constrained_coefs])
     model_coefs = constrained_coefs
     
-    # Compute predictions and add back the intercept
+    # Compute predictions
     preds = jnp.dot(X, model_coefs)
     return preds
+
 
 def calc_loss(coefs, X=yearly_spline, y=flower_df_clean['flower_moy'].to_numpy()):
     preds = predict_mono_bspline(coefs, X)
@@ -279,6 +322,8 @@ def calc_loss(coefs, X=yearly_spline, y=flower_df_clean['flower_moy'].to_numpy()
 loss_grad = jax.grad(calc_loss)
 loss_hess = jax.hessian(calc_loss)
 ```
+
+Now we have what we need to fit our model!
 
 ``` {.python .cell-code}
 coefs = base_model.coef_
@@ -300,13 +345,21 @@ Optimization terminated successfully. Current function value: 0.042299
 Iterations: 101 Function evaluations: 154 Gradient evaluations: 154
 Hessian evaluations: 101
 
-![](monotonic_spline_jax_files/figure-markdown/cell-11-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-14-output-1.png)
 
     <Figure Size: (640 x 480)>
 
 We can zoom in on the parts of the trend that actually decrease to see
 the difference in the relevant time period more clearly.
 
-![](monotonic_spline_jax_files/figure-markdown/cell-12-output-1.png)
+![](monotonic_spline_jax_files/figure-markdown/cell-15-output-1.png)
 
     <Figure Size: (640 x 480)>
+
+### Conclussion
+
+The core insight from this post is that we can enforce shape constraints
+on our functions using a special parameterization of a traditional
+Generalized Additive Model. You can enforce any number of shapes using
+slightly different shape matrices. We then used JAX and Scipy to find
+optimal coefficients for this type of Shape Constrained Additive Model.
