@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Gradient Boosting</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="grf_walkthrough_part_1_files/libs/clipboard/clipboard.min.js"></script>
+<script src="grf_walkthrough_part_1_files/libs/quarto-html/quarto.js"></script>
+<script src="grf_walkthrough_part_1_files/libs/quarto-html/popper.min.js"></script>
+<script src="grf_walkthrough_part_1_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="grf_walkthrough_part_1_files/libs/quarto-html/anchor.min.js"></script>
+<link href="grf_walkthrough_part_1_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="grf_walkthrough_part_1_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="grf_walkthrough_part_1_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="grf_walkthrough_part_1_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="grf_walkthrough_part_1_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Gradient Boosting</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<p>In this post I’ll walk through how you can use the same principles behind Gradient Boosting Machines (GBM) to predict <em>parameters</em> of models in the same way traditional GBMs predict 1-dimensional targets. This allows us to get the benefits of Gradient Boosting (large feature sets, high dimensional interactions, modeling at scale) to fit things like smoothing splines, survival analaysis, and probabilistic models. Its not a modeling silver bullet, but I really enjoyed putting this post together. Let’s dive in.</p>
+<p>Gradient Boosting is a Machine Learning algorithm that fits a series of decision trees; each successive tree attempts to improve the predictions from the set of previous trees. It (generally, there are many GBM implementations out there now) does this with two steps: 1. Before fitting a new tree calculate the gradient of the loss function we are minimizing at each observation 2. Fit a new decision tree that predicts^* this gradient and then add this prediction to the previous predictions.</p>
+<p>_(*) technically fit the negative gradient, we want the loss to go down_</p>
+<p>Recently I was reading about Generalized Random Forests (GRF) to learn more complicated models than traditional Random Forst. This post started as a walkthrough of that technique, but I wanted to try something I’ve always had an idea for first; Can we use a GBM to fit distributions, not just make individual predictions. In this blog post we are going to learn the coefficients for a spline function over the hours of the day using the NYC Citi Bike dataset with Gradient Boosting. Here is an example of what I mean:</p>
+<p>[chart_that_shows_splines]</p>
+<div class="cell" data-execution_count="3">
+<div class="cell-output cell-output-display" data-execution_count="32">
+<div><style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 7)</small>
+<table class="table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">hour_start</th>
+<th style="text-align: left;">ride_date</th>
+<th style="text-align: left;">ride_hour</th>
+<th style="text-align: left;">ride_count</th>
+<th style="text-align: left;">weather_tmin_c</th>
+<th style="text-align: left;">weather_tmax_c</th>
+<th style="text-align: left;">weather_prcp_mm</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">datetime[μs]</td>
+<td style="text-align: left;">date</td>
+<td style="text-align: left;">i64</td>
+<td style="text-align: left;">u32</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">2022-01-01 00:00:00</td>
+<td style="text-align: left;">2022-01-01</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">1246</td>
+<td style="text-align: left;">10.0</td>
+<td style="text-align: left;">13.9</td>
+<td style="text-align: left;">19.3</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">2022-01-01 01:00:00</td>
+<td style="text-align: left;">2022-01-01</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">1379</td>
+<td style="text-align: left;">10.0</td>
+<td style="text-align: left;">13.9</td>
+<td style="text-align: left;">19.3</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">2022-01-01 02:00:00</td>
+<td style="text-align: left;">2022-01-01</td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">1141</td>
+<td style="text-align: left;">10.0</td>
+<td style="text-align: left;">13.9</td>
+<td style="text-align: left;">19.3</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">2022-01-01 03:00:00</td>
+<td style="text-align: left;">2022-01-01</td>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">578</td>
+<td style="text-align: left;">10.0</td>
+<td style="text-align: left;">13.9</td>
+<td style="text-align: left;">19.3</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">2022-01-01 04:00:00</td>
+<td style="text-align: left;">2022-01-01</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">323</td>
+<td style="text-align: left;">10.0</td>
+<td style="text-align: left;">13.9</td>
+<td style="text-align: left;">19.3</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<section id="the-data" class="level3">
+<h3 class="anchored" data-anchor-id="the-data">The Data</h3>
+<p>I’ve downloaded 4 years of the Citi Bike usage data and aggregated by the number of reachs in each hour of each day. Then I’ve also added the high and low temperature for that day as well as the inches of rain. If this were a proper forecasting model you’d want the <em>predicted</em> weather for a day so your model was properly calibrated but this is fine for having features to learn parameters from. One unique thing about this data is that I have stored the hourly ride counts and the hour of the day in an aggregated polars array. This is so the splits will work on the daily level, since I need to generate spline coefficients for each day and apply them to the 24 hour range. If I was using a traditional GBM I would use the <code>ride_hour</code> as a feature and predict the hourly counts.</p>
+<div class="cell" data-execution_count="6">
+<div class="cell-output cell-output-display" data-execution_count="35">
+<div><style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 9)</small>
+<table class="table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">dow</th>
+<th style="text-align: left;">woy</th>
+<th style="text-align: left;">year</th>
+<th style="text-align: left;">high_temp</th>
+<th style="text-align: left;">low_temp</th>
+<th style="text-align: left;">precip</th>
+<th style="text-align: left;">ride_date</th>
+<th style="text-align: left;">ride_hour</th>
+<th style="text-align: left;">ride_count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">i8</td>
+<td style="text-align: left;">i8</td>
+<td style="text-align: left;">i32</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">date</td>
+<td style="text-align: left;">array[i64, 24]</td>
+<td style="text-align: left;">array[u32, 24]</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">27</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">73.04</td>
+<td style="text-align: left;">89.96</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-07-06</td>
+<td style="text-align: left;">[0, 1, … 23]</td>
+<td style="text-align: left;">[3078, 2013, … 2860]</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">2023</td>
+<td style="text-align: left;">12.2</td>
+<td style="text-align: left;">35.96</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2023-02-03</td>
+<td style="text-align: left;">[0, 1, … 23]</td>
+<td style="text-align: left;">[631, 346, … 483]</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">30</td>
+<td style="text-align: left;">2023</td>
+<td style="text-align: left;">78.08</td>
+<td style="text-align: left;">93.92</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2023-07-28</td>
+<td style="text-align: left;">[0, 1, … 23]</td>
+<td style="text-align: left;">[1857, 1057, … 3784]</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">16</td>
+<td style="text-align: left;">2023</td>
+<td style="text-align: left;">51.08</td>
+<td style="text-align: left;">66.92</td>
+<td style="text-align: left;">1.460631</td>
+<td style="text-align: left;">2023-04-23</td>
+<td style="text-align: left;">[0, 1, … 23]</td>
+<td style="text-align: left;">[714, 240, … 1290]</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">2024</td>
+<td style="text-align: left;">31.1</td>
+<td style="text-align: left;">44.96</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2024-02-04</td>
+<td style="text-align: left;">[0, 1, … 23]</td>
+<td style="text-align: left;">[1352, 891, … 857]</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<p>Lets use this data to fit a traditional GBM on the hourly data and visualize some results.</p>
+<div class="cell" data-execution_count="7">
+<div class="cell-output cell-output-stdout">
+<pre><code>ride_hour: 77.99%
+low_temp: 6.21%
+high_temp: 4.57%
+dow: 3.45%
+precip: 2.98%
+year: 2.65%
+woy: 2.15%</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="8">
+<div class="cell-output cell-output-stdout">
+<pre><code>shape: (3, 2)
+┌────────────┬─────────────────┐
+│ ride_date  ┆ weather_prcp_mm │
+│ ---        ┆ ---             │
+│ date       ┆ f64             │
+╞════════════╪═════════════════╡
+│ 2025-09-29 ┆ 0.0             │
+│ 2025-03-08 ┆ 0.0             │
+│ 2025-05-17 ┆ 0.0             │
+└────────────┴─────────────────┘</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<p><img src="grf_walkthrough_part_1_files/figure-markdown/cell-9-output-2.png" class="img-fluid"></p>
+</div>
+</div>
+</section>
+<section id="gradient-boosting-as-opimization" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-boosting-as-opimization">Gradient Boosting as Opimization</h3>
+<p>Traditionally Gradient Boosting is fit by learning direction to move each prediction individually by using the gradient of that observation’s prediction against the loss function as a “psuedo-label” to fit a model to predict. We can use the same procedure to fit a set of parameters and optiize them with the same algorithm. Then we we need to make a prediction we can use the prediction parameter values for that observation.</p>
+<p>In our example we will calculate our parameter vectors <span class="math inline">\(theta\)</span> for an observation <span class="math inline">\(x\)</span> at any iteration <span class="math inline">\(m-1\)</span> as the sum of all the individual predictions from our base learners <span class="math inline">\(f_m(x)\)</span></p>
+<p><span class="math display">\[\hat{\theta}_{m-1} = \sum_{i \in m-1} f_{m-1}(x)\]</span></p>
+<p>The base learners are models learned to predict the gradients of these parameters against our loss function</p>
+<p><span class="math display">\[f_m(x) \sim \triangledown L(y, \hat{\theta}_{m-1})\]</span></p>
+<p>In our example we need one extra step. If <span class="math inline">\(b(\theta, x)\)</span> is an individual model that generates predictions for a set of parameters <span class="math inline">\(\theta\)</span> and an observation <span class="math inline">\(x\)</span> then we calculate the gradients by how well the predictions from <span class="math inline">\(b(\theta, x)\)</span> predict our loss function <span class="math inline">\(L\)</span>:</p>
+<p><span class="math display">\[\triangledown L(y_i, b(\theta_{m-1}, x_i))\]</span></p>
+<p>Then our decision tree will use <span class="math inline">\(-g_{\theta}\)</span> as the multitarget outputs and we can fit a decision tree to these targets. Since we have multiple parameter values in a smoothing spline we use a multitarget algorithm to make predictions for each dimension.</p>
+<p>And our updates to our fitted parameters are</p>
+<p><span class="math display">\[\hat{\theta}_{m} = \hat{\theta}_{m-1} + \alpha * f_m(x)\]</span></p>
+<p>Lets ease into this by mimicking what the tree splitting algorithm does to find optimal splits but with our paramters; coefficients for a smoothing spline of the hours of the day.</p>
+</section>
+<section id="optimal-spline-splits" class="level3">
+<h3 class="anchored" data-anchor-id="optimal-spline-splits">Optimal Spline Splits</h3>
+<p>Lets walk through this without worrying about trees and gradients. The goal here is to pick up on which feature value results in the most unique daily ride shape. We’ll loop through values in a feature as the tree splitting algorithm will do. But for a first pass we will just measure how much variance there is from using the group average to predict the hourly ride counts. So for example we will measure the squared error from the observed counts with a single day of the week’s average, and then do the same for all the other days as one group. The day with the lowest combined Sum of Squared Errors does the best job of splitting the data into coherent days of the week.</p>
+<div class="cell" data-execution_count="10">
+<div class="cell-output cell-output-display" data-execution_count="39">
+<pre><code>{1: 215386270471.15167,
+ 2: 211969117421.43863,
+ 3: 212727362990.19373,
+ 4: 213793137082.36816,
+ 5: 216240287346.70712,
+ 6: 204684813430.34137,
+ 7: 202924147433.1372}</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="11">
+<div class="cell-output cell-output-display" data-execution_count="40">
+<p><img src="grf_walkthrough_part_1_files/figure-markdown/cell-12-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>So Sunday has the most unique shape by this measure. The other days would have had more total error across all observations if we had split on one of them instead.</p>
+<div class="cell" data-execution_count="12">
+<div class="cell-output cell-output-display" data-execution_count="41">
+<div><style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 2)</small>
+<table class="table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">woy</th>
+<th style="text-align: left;">error</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">i64</td>
+<td style="text-align: left;">f64</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">14</td>
+<td style="text-align: left;">1.7068e11</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">15</td>
+<td style="text-align: left;">1.7146e11</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">13</td>
+<td style="text-align: left;">1.7213e11</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">12</td>
+<td style="text-align: left;">1.7354e11</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">16</td>
+<td style="text-align: left;">1.7379e11</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="13">
+<div class="cell-output cell-output-display" data-execution_count="42">
+<p><img src="grf_walkthrough_part_1_files/figure-markdown/cell-14-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>I think this may be a data problem with some values missing or something. I don’t know why early April would have the least amount of rides? Maybe spring break for the kids? Oh wow, <a href="https://www.schools.nyc.gov/calendar/2025-2026-school-year-calendar">that is the answer</a> haha.</p>
+</section>
+<section id="smoothing-splines" class="level3">
+<h3 class="anchored" data-anchor-id="smoothing-splines">Smoothing Splines</h3>
+<p>Now we can actually get to fitting our Gradient Boosting Spline Model. If you want an introduction to splines I’ve written a couple different posts on this topic:</p>
+<ol type="1">
+<li><a href="https://statmills.com/2025-05-03-monotonic_spline_jax/">How to Fit Monotonic Smooths in JAX using Shape Constrained P-Splines</a></li>
+<li><a href="https://statmills.com/2025-02-04-fha_data/">A first Look at some Atlanta Housing Data</a></li>
+<li><a href="https://statmills.com/2023-12-08-fitting_multiple_splines/">Fitting Multiple Spline Terms in Python using GLUM</a></li>
+</ol>
+<p>For our model we have to do a little pre-processing to be ready for the fitting process</p>
+<ol type="1">
+<li>Build our spline basis for the 24 hour period of day</li>
+<li>Write a function to generate predictions with our flattened hourly data</li>
+<li>Write a function to calculate the gradient of our loss function</li>
+</ol>
+<div class="cell" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>N_KNOTS <span class="op">=</span> <span class="dv">12</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>x_day <span class="op">=</span> hourly_df[<span class="st">'ride_hour'</span>].unique().to_numpy().reshape(<span class="op">-</span><span class="dv">1</span>, <span class="dv">1</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>spline_hour <span class="op">=</span> SplineTransformer(n_knots<span class="op">=</span>N_KNOTS, include_bias<span class="op">=</span><span class="va">True</span>).fit(X<span class="op">=</span>x_day)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>N_SPLINES <span class="op">=</span> spline_hour.n_features_out_</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>bs_day <span class="op">=</span> spline_hour.transform(x_day)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'Example of Basis Activations for different hours'</span>)</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">6</span>):</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'Hour </span><span class="sc">{</span>i<span class="op">*</span><span class="dv">4</span><span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>display_vec(bs_day[i<span class="op">*</span><span class="dv">4</span>, :])<span class="sc">}</span><span class="ss">'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Example of Basis Activations for different hours
+Hour 0: ▂█▂▁▁▁▁▁▁▁▁▁▁▁
+Hour 4: ▁▁▃█▂▁▁▁▁▁▁▁▁▁
+Hour 8: ▁▁▁▁▃█▂▁▁▁▁▁▁▁
+Hour 12: ▁▁▁▁▁▁▄█▁▁▁▁▁▁
+Hour 16: ▁▁▁▁▁▁▁▁▅█▁▁▁▁
+Hour 20: ▁▁▁▁▁▁▁▁▁▁▆█▁▁</code></pre>
+</div>
+</div>
+<p>Here is where things start to diverge from traditional models though. I do not want each tree <span class="math inline">\(f_m(x)\)</span> to produce a prediction of <span class="math inline">\(\hat{y}_m\)</span>. I want each tree to predict the optimal spline coefficients for that gradient step <span class="math inline">\(\hat{\theta}_t\)</span>. So we will need to know the gradient of the loss function for each spline coefficient and each observation. Luckily, <code>jax</code> makes this easy. We can define our loss function once that operates on a single observation. Jax will then calculate the partial deritaves automatically with <code>grad</code>. And we can scale this to an array with the <code>vmap</code> function.</p>
+<div class="cell" data-execution_count="18">
+<div class="cell-output cell-output-stdout">
+<pre><code>(34368, 14)
+(1432, 24, 14)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> loss_i(coefs, bs_array, y_array):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Calculate the scalar loss for the input, spline transformed data</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">    </span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">    Parameters:</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">    coefs: [b,] 1d array from numerical procedure</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co">    bs_array: [24, b] spline transformed data</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co">    y_array: [24, 1] target values</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">#x_array_ = x_array.reshape(-1, 1)</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    y_array_ <span class="op">=</span> y_array.reshape(<span class="op">-</span><span class="dv">1</span>, <span class="dv">1</span>)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    preds <span class="op">=</span> jnp.dot(bs_array, coefs.reshape(<span class="op">-</span><span class="dv">1</span>, <span class="dv">1</span>))</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    error <span class="op">=</span> jnp.power(preds <span class="op">-</span> y_array_, <span class="dv">2</span>)</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    penalty <span class="op">=</span> jnp.<span class="bu">sum</span>(jnp.square(jnp.diff(coefs, <span class="dv">1</span>)))</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># using mean instead of sum to keep the total loss numbers low...I think that's ok</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    error_array <span class="op">=</span> jnp.mean(error) </span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> error_array <span class="op">+</span> <span class="fl">0.01</span> <span class="op">*</span> penalty</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a><span class="co"># vectorize our loss function to work on arrays</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>loss_array <span class="op">=</span> vmap(loss_i)</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate the gradient of a single observation</span></span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a><span class="co"># grad only works on scalar output, so we have to vectorize them seperately </span></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>grad_i <span class="op">=</span> grad(loss_i)</span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>grad_array <span class="op">=</span> vmap(grad_i)</span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>v, g <span class="op">=</span> value_and_grad(loss_i)(coefs_init, BS_daily[<span class="dv">0</span>], y_log[<span class="dv">0</span>])</span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f'Loss function value for one day: </span><span class="sc">{</span>v<span class="sc">:.2f}</span><span class="ss">'</span>)</span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'Gradients for each spline coefficient for that day:'</span>)</span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(np.<span class="bu">round</span>(g, <span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Loss function value for one day: 1.03
+Gradients for each spline coefficient for that day:
+[-0.    0.01  0.11  0.19  0.12 -0.05 -0.16 -0.22 -0.24 -0.24 -0.22 -0.14
+ -0.05 -0.  ]</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="21">
+<div class="cell-output cell-output-display" data-execution_count="48">
+<pre><code>Array([-0.00213708,  0.01151987,  0.1081879 ,  0.19220339,  0.11592538,
+       -0.04711094, -0.16439892, -0.21639106, -0.23524162, -0.24076661,
+       -0.21627203, -0.14353386, -0.04512079, -0.00268354], dtype=float32)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="22">
+<div class="cell-output cell-output-display" data-execution_count="49">
+<pre><code>Array([[-0.        ,  0.01      ,  0.11      ,  0.19      ,  0.12      ,
+        -0.05      , -0.16      , -0.22      , -0.24      , -0.24      ,
+        -0.22      , -0.14      , -0.05      , -0.        ],
+       [ 0.02      ,  0.21      ,  0.42      ,  0.37      ,  0.11      ,
+        -0.01      ,  0.03      ,  0.03      ,  0.        , -0.01      ,
+         0.07      ,  0.19999999,  0.17999999,  0.03      ],
+       [ 0.01      ,  0.08      ,  0.22      ,  0.22      , -0.01      ,
+        -0.14      , -0.14      , -0.16      , -0.19      , -0.22999999,
+        -0.21      , -0.14      , -0.06      , -0.01      ],
+       [ 0.02      ,  0.22      ,  0.45999998,  0.48999998,  0.35999998,
+         0.14999999, -0.06      , -0.17999999, -0.22      , -0.21      ,
+        -0.14      , -0.02      ,  0.05      ,  0.01      ],
+       [ 0.01      ,  0.09999999,  0.25      ,  0.35      ,  0.26      ,
+         0.06      , -0.07      , -0.13      , -0.14999999, -0.12      ,
+        -0.04      ,  0.06      ,  0.09999999,  0.02      ]],      dtype=float32)</code></pre>
+</div>
+</div>
+<p>I’ve initialized some coefficients to predict a flat line, <code>coefs_init</code>. We can calculate our initial gradients and thus psuedo-labels to use in the first tree with our gradient functions. One technical note is the coefficient vector needs to be the same length as the X and Y arrays I’m using for vmap to accept it. Once we start fitting trees this will be the case, but when I created by coefs_init values originally I just used a 1d array for all values. That’s why in the following code cell I repeat it to match the length of our data.</p>
+<div class="cell" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>coefs_init_array <span class="op">=</span> np.tile(coefs_init, (daily_df.shape[<span class="dv">0</span>], <span class="dv">1</span>))</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>labels_init <span class="op">=</span> <span class="op">-</span>grad_array(coefs_init_array, BS_daily, y_log)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(labels_init.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>(1432, 14)</code></pre>
+</div>
+</div>
+</section>
+<section id="gradient-boosting-splines" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-boosting-splines">Gradient Boosting Splines</h3>
+<p>We now have everything we need to update our spline coefficients: 1. <code>coefs_init</code>: an initial set of smoothing splines to produce a flat prediction 2. <code>grad_array</code>: a function to calculate the gradients of our predictions with respect to the coefficients at each observation 3. <code>labels_init</code>: The initial gradient values to use as a our psuedo-labels for our first iteration</p>
+<p>Lets fit one decision tree with our features to predict the gradients of the splines for each observation</p>
+<div class="cell" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.tree <span class="im">import</span> DecisionTreeRegressor</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>x_features <span class="op">=</span> daily_df[FEATURE_COLS].to_numpy()</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>tree_init <span class="op">=</span> DecisionTreeRegressor(max_depth<span class="op">=</span><span class="dv">2</span>).fit(x_features, labels_init)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="25">
+<div class="cell-output cell-output-stdout">
+<pre><code>Tree splits:
+low_temp &lt;= 57.5
+  dow &lt;= 5.5
+  else:
+else:
+  dow &lt;= 5.5
+  else:</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="26">
+<div class="cell-output cell-output-stdout">
+<pre><code>First Tree Feature Importances:
+low_temp: 64.93%
+dow: 35.07%
+woy: 0.00%
+year: 0.00%
+high_temp: 0.00%
+precip: 0.00%</code></pre>
+</div>
+</div>
+<p>We can see how the different predictions look for this leaf nodes of this simple tree:</p>
+<div class="cell" data-execution_count="29">
+<div class="cell-output cell-output-display" data-execution_count="56">
+<p><img src="grf_walkthrough_part_1_files/figure-markdown/cell-30-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+</section>
+<section id="gradient-boosted-splines" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-boosted-splines">Gradient Boosted Splines</h3>
+<p>We now have everything we need to fit our Gradient Boosting models to try and improve our predictions.</p>
+<div class="cell" data-execution_count="31">
+<div class="cell-output cell-output-stdout">
+<pre><code>Initial loss: 1.5850720405578613
+Final loss: 0.2547141909599304</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="32">
+<div class="cell-output cell-output-stdout">
+<pre><code>[7.91      7.75      7.45      7.1       6.85      6.89      7.19
+ 7.6499996 8.16      8.599999  8.91      9.12      9.25      9.32
+ 9.349999  9.37      9.37      9.33      9.23      9.07      8.849999
+ 8.599999  8.36      8.139999 ]
+[8.03 7.61 7.22 6.91 6.61 6.41 7.04 7.53 7.98 8.45 8.77 8.93 9.09 9.14
+ 9.17 9.22 9.24 9.25 9.23 9.11 8.94 8.68 8.4  7.96]</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="34">
+<div class="cell-output cell-output-display" data-execution_count="61">
+<div><style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 13)</small>
+<table class="table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">dow</th>
+<th style="text-align: left;">woy</th>
+<th style="text-align: left;">year</th>
+<th style="text-align: left;">high_temp</th>
+<th style="text-align: left;">low_temp</th>
+<th style="text-align: left;">precip</th>
+<th style="text-align: left;">ride_date</th>
+<th style="text-align: left;">ride_hour</th>
+<th style="text-align: left;">ride_count</th>
+<th style="text-align: left;">y_log</th>
+<th style="text-align: left;">init_preds</th>
+<th style="text-align: left;">init_label</th>
+<th style="text-align: left;">preds_fit</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">i8</td>
+<td style="text-align: left;">i8</td>
+<td style="text-align: left;">i32</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">date</td>
+<td style="text-align: left;">i64</td>
+<td style="text-align: left;">array[u32, 24]</td>
+<td style="text-align: left;">f64</td>
+<td style="text-align: left;">array[f64, 24]</td>
+<td style="text-align: left;">str</td>
+<td style="text-align: left;">f64</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">40</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">60.98</td>
+<td style="text-align: left;">82.94</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-10-04</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">[3733, 2721, … 5474]</td>
+<td style="text-align: left;">8.225235</td>
+<td style="text-align: left;">[7.811409, 7.774265, … 7.868422]</td>
+<td style="text-align: left;">"Warm Weekend"</td>
+<td style="text-align: left;">7.899113</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">40</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">60.98</td>
+<td style="text-align: left;">82.94</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-10-04</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">[3733, 2721, … 5474]</td>
+<td style="text-align: left;">7.909122</td>
+<td style="text-align: left;">[7.811409, 7.774265, … 7.868422]</td>
+<td style="text-align: left;">"Warm Weekend"</td>
+<td style="text-align: left;">7.743441</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">40</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">60.98</td>
+<td style="text-align: left;">82.94</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-10-04</td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">[3733, 2721, … 5474]</td>
+<td style="text-align: left;">7.481556</td>
+<td style="text-align: left;">[7.811409, 7.774265, … 7.868422]</td>
+<td style="text-align: left;">"Warm Weekend"</td>
+<td style="text-align: left;">7.447139</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">40</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">60.98</td>
+<td style="text-align: left;">82.94</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-10-04</td>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">[3733, 2721, … 5474]</td>
+<td style="text-align: left;">7.131699</td>
+<td style="text-align: left;">[7.811409, 7.774265, … 7.868422]</td>
+<td style="text-align: left;">"Warm Weekend"</td>
+<td style="text-align: left;">7.105554</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">40</td>
+<td style="text-align: left;">2025</td>
+<td style="text-align: left;">60.98</td>
+<td style="text-align: left;">82.94</td>
+<td style="text-align: left;">0.0</td>
+<td style="text-align: left;">2025-10-04</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">[3733, 2721, … 5474]</td>
+<td style="text-align: left;">6.566672</td>
+<td style="text-align: left;">[7.811409, 7.774265, … 7.868422]</td>
+<td style="text-align: left;">"Warm Weekend"</td>
+<td style="text-align: left;">6.894285</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell" data-execution_count="35">
+<div class="cell-output cell-output-display" data-execution_count="62">
+<p><img src="grf_walkthrough_part_1_files/figure-markdown/cell-36-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>That’s it for today’s post. I’m excited to take this concept even further to fit more types of models. If you want to make sure you see any future post I write you can follow me on Twitter or BlueSky.</p>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

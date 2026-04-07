@@ -1,0 +1,357 @@
+---
+title: Generalized Random Forsest Walkthrough: PArt 1
+format: gfm
+execute: 
+  echo: False
+jupyter: python3
+---
+
+```{python}
+import polars as pl
+import numpy as np
+import plotnine as pn
+
+import jax.numpy as jnp
+from jax import grad, hessian, value_and_grad
+from scipy.optimize import minimize
+
+from sklearn.preprocessing import SplineTransformer
+
+DATA_DIR = '../data/citi_bike/'
+```
+
+
+```{python}
+hourly_df = pl.read_parquet(DATA_DIR + 'hourly_rides.parquet')
+```
+
+
+```{python}
+hourly_df = (
+    hourly_df.
+    with_columns(
+        dow = pl.col('ride_date').dt.weekday(),
+        woy = pl.col('ride_date').dt.week()
+    )
+)
+```
+
+```{python}
+daily_df = (
+    hourly_df.
+    group_by('ride_date', 'dow', 'woy').
+    agg('ride_hour', 'ride_count').
+    with_columns(
+        pl.col('ride_hour').list.to_array(24),
+        pl.col('ride_count').list.to_array(24)
+    )
+)
+
+# remove no days
+zero_days_df = (
+    daily_df.
+    select('ride_date', pl.col('ride_count').arr.sum()).
+    filter(pl.col('ride_count') == 0)
+)
+
+daily_df = daily_df.join(zero_days_df, how='anti', on='ride_date')
+```
+
+Gradient boosting updates predictions with a new iteration/learner that attempts to predict the gradient of the loss for each observation at that step
+
+$$
+F_{t+1}(X) = F_{t}(X) + h(X) \newline
+
+h(X) = E[-\triangledown l(Y, F_{t}(X))]
+$$
+
+But what if we don't want to just generate a prediction for $\hat{y}_i$ for a data point $x_i$, but instead predict a set of parameters $\hat{\theta}_i$ that our prediction is generated from? We can use the same process as gradient boosting to learn the best parameters for a single datapoint by iteratively fitting trees to those values. 
+
+```{python}
+def element_agg_df(df, group_col, agg_func=np.mean):
+    array = df['ride_count'].to_numpy()
+    #array = np.vstack(array)
+    agg_values = agg_func(array, axis=0)
+    return pl.DataFrame(
+        {group_col: df[group_col].first(),
+         'ride_count_avg': [agg_values]})
+
+def calc_hourly_loss_sse(df, group_col):
+    group_avg = (
+        df.group_by(group_col).
+        map_groups(lambda df: element_agg_df(df, group_col))
+    )
+
+    pred_df = (
+        df.
+        join(group_avg, on = group_col, how='inner').
+        with_columns(error = pl.col('ride_count') - pl.col('ride_count_avg')).
+        group_by(group_col).
+        agg(sse = pl.col('error').arr.eval(pl.element().pow(2)).arr.sum().sum()).
+        sort(group_col)
+    )
+
+    return pred_df
+
+test = calc_hourly_loss_sse(daily_df, 'dow')
+```
+
+1. calculate grouped averages
+2. Calculate the sse within and out of group
+3. take minimum SSE becuase that represents the best split
+
+```{python}
+dows = range(1, 8)
+dow_results = {
+    i: calc_hourly_loss_sse(daily_df.with_columns(is_dow = pl.col('dow') == i), 'is_dow').sort('is_dow')
+    for i in dows}
+dow_result = {i: df['sse'].sum() for i, df in dow_results.items()}
+dow_result
+```
+
+
+```{python}
+plot_df = (
+    hourly_df.
+    with_columns(is_7 = pl.col('dow') == 7).
+    group_by('is_7', 'ride_hour').agg(pl.col('ride_count').mean())
+)
+
+pn.ggplot(plot_df, pn.aes(x='ride_hour', y='ride_count', color='is_7')) +\
+    pn.geom_line(size=2) +\
+    pn.theme_minimal()
+```
+
+
+```{python}
+woys = hourly_df['woy'].unique().sort()[:-1]
+woy_results = {
+    i: calc_hourly_loss_sse(daily_df.with_columns(is_le_woy = pl.col('woy') <= i), 'is_le_woy')
+    for i in woys}
+woy_result = [
+    {'woy': i, 'error': df['sse'].sum()} for i, df in woy_results.items()]
+pl.DataFrame(woy_result).sort(pl.col('error').abs(), descending=False).head(5)
+```
+
+```{python}
+plot_df = (
+    hourly_df.
+    with_columns(is_14 = pl.col('woy') <= 14).
+    group_by('is_14', 'ride_hour').agg(pl.col('ride_count').mean())
+)
+
+pn.ggplot(plot_df, pn.aes(x='ride_hour', y='ride_count', color='is_14')) +\
+    pn.geom_line(size=2) +\
+    pn.theme_minimal()
+```
+
+```{python}
+x_day = hourly_df['ride_hour'].unique().to_numpy().reshape(-1, 1)
+spline_hour = SplineTransformer(n_knots=12, include_bias=False).fit(X=x_day)
+
+def init_coefs(n_splines, y):
+    y_mean = y.mean()
+    coefs = np.repeat(y_mean / 2, n_splines)
+    return coefs
+
+coefs_init = init_coefs(spline_hour.n_features_out_, hourly_df['ride_count'].to_numpy())
+preds_init = np.dot(spline_hour.transform(x_day), coefs_init.T)
+
+def predict_array(x_array, coefs, spline_hour=spline_hour):
+    """
+    x_array: [n, 24] array from polars arr.to_numpy()
+    coefs: [b,] 1d array from numerical procedure
+    """
+    x_array_ = x_array.reshape(-1, 1)
+    bs_array = spline_hour.transform(x_array_)
+    pred_array = jnp.dot(bs_array, coefs.reshape(-1, 1))
+    # put it back to "flat"
+    return pred_array.reshape(-1, 24)
+
+
+def flat_to_tall_bs(x_array, spline_hour=spline_hour):
+    return spline_hour.transform(x_array.reshape(-1, 1))
+
+
+def predict_array_(x_array, coefs, spline_hour=spline_hour):
+    """
+    x_array: [n, 24] array from polars arr.to_numpy()
+    coefs: [b,] 1d array from numerical procedure
+    """
+    bs_array = flat_to_tall_bs(x_array, spline_hour)
+    pred_array = jnp.dot(bs_array, coefs.reshape(-1, 1))
+    return pred_array
+
+
+def resid_array(coefs, x_array, y_array, spline_hour=spline_hour):
+    """
+    resid = x * (y - x @ b)
+    """
+    x_array_ = x_array.reshape(-1, 1)
+    y_array_ = y_array.reshape(-1, 1)
+    bs_array = spline_hour.transform(x_array_)
+    preds = jnp.dot(bs_array, coefs.reshape(-1, 1))
+    print(y_array_[:5] - preds[:5])
+    resid = bs_array * (y_array_ - preds)
+    return resid.reshape(-1, 24)
+
+x_flat = daily_df['ride_hour'][:5].to_numpy()
+y_flat = daily_df['ride_count'][:5].to_numpy()
+test = resid_array(coefs_init, x_flat, y_flat)
+
+```
+
+# math for the gradient of the loss
+
+```{python}
+def hourly_resid_i(beta, x, y):
+    x_spline = spline_hour.transform(x)
+    preds = jnp.dot(x_spline, beta.T)
+    resid = x_spline * (jnp.asarray(y - preds)[:, None])
+    penalty = jnp.sum(jnp.square(jnp.diff(beta, 1)))
+    return preds, -resid - 0.1 * penalty
+```
+
+```{python}
+spline_hour = SplineTransformer(n_knots=12, include_bias=False).fit(X=hourly_df['ride_hour'].unique().to_numpy().reshape(-1, 1))
+
+def hourly_loss(beta, x, y):
+    x_spline = spline_hour.transform(x)
+    preds = jnp.dot(x_spline, beta.T)
+    penalty = jnp.sum(jnp.square(jnp.diff(beta, 1)))
+    return jnp.mean(jnp.power(preds - y, 2)) + 0.1 * penalty
+
+hourly_loss_grad = grad(hourly_loss)
+hourly_loss_hess = hessian(hourly_loss)
+
+def loss_np(beta, x, y):
+    return float(hourly_loss(jnp.asarray(beta), x, y))
+
+def grad_np(beta, x, y):
+    return np.asarray(
+        hourly_loss_grad(jnp.asarray(beta), x, y)
+    )
+
+def hess_np(beta, x, y):
+    return np.asarray(
+        hourly_loss_hess(jnp.asarray(beta), x, y)
+    )
+
+
+xo = np.random.randn(spline_hour.n_features_out_) * 2 + 10
+X = hourly_df['ride_hour'].to_numpy().reshape(-1, 1)
+y = hourly_df['ride_count'].to_numpy()
+y_norm = (y - y.mean()) / y.std()
+
+result = minimize(
+    fun=loss_np,
+    x0=xo,  # SciPy requires NumPy
+    jac=grad_np,  # First derivative
+    hess=hess_np,  # Second derivative (optional, speeds up convergence)
+    args=(X, y_norm),
+    method="Newton-CG",
+    options={"disp": True}
+)
+
+
+```
+
+```{python}
+beta_init = result.x
+def hourly_resid_i(beta, x, y):
+    x_spline = spline_hour.transform(x)
+    preds = jnp.dot(x_spline, beta.T)
+    resid = x_spline * (jnp.asarray(y - preds)[:, None])
+    penalty = jnp.sum(jnp.square(jnp.diff(beta, 1)))
+    return preds, -resid - 0.1 * penalty
+preds_init, resid_init = hourly_resid_i(beta_init, x[:3], y_norm[:3])
+print(resid_init.shape)
+resid_init.round(2)
+```
+
+```{python}
+preds_init.round(2)
+beta_init.round(2)
+```
+
+```{python}
+beta_2 = beta_init - resid_init
+x_spline = spline_hour.transform(x)
+jnp.multiply(x_spline[:3], beta_2).sum(axis=1).round(2)
+```
+
+```{python}
+plot_df = hourly_df.select('ride_hour').unique()
+plot_x = plot_df['ride_hour'].to_numpy().reshape(-1, 1)
+plot_spline = spline_hour.transform(plot_x)
+plot_preds = jnp.dot(plot_spline, result.x)
+preds_raw = np.asarray(plot_preds * y.std() + y.mean())
+plot_df = plot_df.with_columns(pl.Series(name='preds', values=preds_raw))
+
+
+pn.ggplot(plot_df, pn.aes(x = 'ride_hour', y = 'preds')) +\
+    pn.geom_line()
+
+```
+
+$A_P$ as any consistent estimate for the gradient of the expectation of the $\gamma$ function, i.e. $\triangledown E[\gamma_{\theta_P}(O_i) | X_i \in P]$
+
+$A_P$ = mean($\triangledown \psi_{\theta_P}(O_i)$)
+
+1. Compute $\theta$ and $A_{P}^{-1}$ on the Parent 
+2. Calculate psuedo outcomes for each observation with $-A_P^{-1}\psi_{\theta_P}(O_i)$
+
+Its a line-search / gradient step: resid * inverse gradient
+
+So we have selected our splits by minimizing the loss function. This is where the paper takes a turn. They approach the problem as a line-search with gradient updates. 
+
+So we need to calculate a Moment Estimating Equation for the optimal parameters that minimize our loss function. We do that by calculating the gradient and setting it to 0 and then uding that as a first order approximation to the full solution. 
+
+$$
+L(\beta) = (\mathbf{Y} - \beta * \mathbf{X})^{2} + \lambda \beta^T \mathbf{S} \beta
+$$
+
+Where $\mathbf{S}$ is our difference matrix on the coefficients. 
+
+Taking the derivative and setting to 0 we get:
+
+$$
+\triangledown_{\beta} L(\beta) = -2 * \mathbf{X} * (\mathbf{Y} - \beta * \mathbf{X}) + 2 \mathbf{S} \beta = 0
+$$
+
+We can calculate a moment contribution for each observation by focusing on what will make this 0:
+
+$$
+\psi_{\beta} (O_i) = \mathbf{X} * (\mathbf{Y_i} - \beta * \mathbf{X_i}) - 2 \mathbf{S} \beta 
+$$
+
+When we sum this across all observations in a node to calculate the average we can calculate the difference penalty only one. 
+
+So what does this look like given one of our splits?
+
+```{python}
+def predict(beta, x, spline_bs=spline_hour):
+    x_spline = spline_bs.transform(x)
+    return jnp.dot(x_spline, beta)
+
+def calc_moment_scores(beta, x, y):
+    """
+    y = [n x 1]
+    x = [n x b]
+    b = [b,]
+    """
+    y = y.reshape(-1, 1)
+    beta = beta.reshape(-1, 1)
+    result = x * (y - jnp.dot(x, beta))
+    b = beta.shape[0]
+    D = jnp.eye(b - 1, b, k=1) - jnp.eye(b - 1, b)   # (b-1, b)
+    penalty_vec = 0.1 * (D.T @ D @ beta)
+    print(penalty_vec.shape)
+    return result - penalty_vec.reshape(1, -1)
+
+test = calc_moment_scores(result.x, spline_hour.transform(X[:5]), y_norm[:5])
+preds = predict(result.x, x[:5])
+resids = y_norm[:5] - preds
+resids
+```
+
